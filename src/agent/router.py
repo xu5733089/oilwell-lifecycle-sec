@@ -42,12 +42,42 @@ INTENTS: Dict[str, Dict] = {
     "gen_report": dict(
         desc="生成评估报告初稿",
         kw=["报告", "出个报告", "汇报", "文档", "导出"]),
+    # ---- SEC 单元（采油厂、公司）级意图 ----
+    "unit_composition": dict(
+        desc="SEC 单元（或采油厂、公司）已证实已开发储量的新-老-措构成",
+        kw=["构成", "新老措", "新-老-措", "组成", "分构成", "储量结构"]),
+    "unit_decline": dict(
+        desc="单元老井基础递减：扣除近 N 年新井与措施后的自然递减率、综合递减率",
+        kw=["自然递减", "综合递减", "基础递减", "老井递减", "递减率", "扣3年", "扣5年"]),
+    "measure_effect": dict(
+        desc="本期措施效果与措施增储：补孔、压裂、酸化、大修、防砂、注水受益",
+        kw=["措施", "补孔", "压裂", "酸化", "大修", "防砂", "注水受益", "增油"]),
+    "new_well_identify": dict(
+        desc="本期新井自动分类：提采新井与扩边井",
+        kw=["提采新井", "扩边", "新井识别", "新井分类", "哪些新井", "新井"]),
+    "unit_reconcile": dict(
+        desc="期初到期末的储量对账与变化归因",
+        kw=["对账", "变化", "变了", "为什么", "原因", "归因", "变动", "期初", "期末", "折耗"]),
+    "unit_sensitivity": dict(
+        desc="油价、成本、产量、递减率对 PDP 的敏感性",
+        kw=["敏感", "油价影响", "成本影响", "情景分析"]),
     "fallback": dict(desc="无法归类，需澄清", kw=[]),
 }
 
+UNIT_INTENTS = {"unit_composition", "unit_decline", "measure_effect", "new_well_identify",
+                "unit_reconcile", "unit_sensitivity"}
+# 句子里出现这些词，评估对象就是单元 / 采油厂 / 公司，只在单元级意图里选；
+# 否则只在单井意图里选 —— "递减率"对一口井是递减分析，对一个单元是老井基础递减。
+SCOPE_TOKENS = ["sec_", "单元", "采油厂", "公司", "全油田"]
+# 单元级问题没命中具体意图、但问的是储量时，默认给构成评估
+UNIT_DEFAULT_KW = ["储量", "pdp", "sec", "已证实"]
+
 # 平票时按"下游优先"取舍：一句话里同时出现"做完递减分析"和"能不能进已证实储量"，
 # 用户真正要的是后者。上游分析是手段，下游结论才是目的。
-PRIORITY = ["gen_report", "sec_screen", "cross_check", "estimate_reserves",
+# 单元级意图里具体的优先于笼统的："措施增储构成"问的是措施，不是整体构成。
+PRIORITY = ["unit_reconcile", "unit_sensitivity", "unit_decline", "measure_effect",
+            "new_well_identify", "unit_composition",
+            "gen_report", "sec_screen", "cross_check", "estimate_reserves",
             "fit_dca", "predict_lifecycle", "find_analogs", "query_well"]
 
 # 越权动词：平台对数据只读。带这些动词的请求先拦下来，
@@ -79,8 +109,12 @@ def keyword_route(text: str) -> RouteResult:
     t = text.lower()
     if any(v in t for v in OUT_OF_SCOPE_VERBS):
         return RouteResult("fallback", 1.0, "out_of_scope", [])
-    hits = {k: sum(1 for w in v["kw"] if w in t) for k, v in INTENTS.items() if v["kw"]}
+    unit_scope = any(k in t for k in SCOPE_TOKENS)
+    hits = {k: sum(1 for w in v["kw"] if w in t) for k, v in INTENTS.items()
+            if v["kw"] and (k in UNIT_INTENTS) == unit_scope}
     top = max(hits.values()) if hits else 0
+    if unit_scope and top == 0 and any(w in t for w in UNIT_DEFAULT_KW):
+        return RouteResult("unit_composition", 0.63, "keyword", ["unit_composition"])
     tied = [k for k, v in hits.items() if v == top and v > 0]
     best = min(tied, key=PRIORITY.index) if tied else "fallback"
     n = hits.get(best, 0)

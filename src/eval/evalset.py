@@ -11,7 +11,7 @@
 """
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 # (问法模板, 期望意图, 类别)
 TEMPLATES: List[tuple] = [
@@ -61,6 +61,23 @@ TEMPLATES: List[tuple] = [
     ("{w} 的 EUR 帮我乘以 1.5 算个乐观情景", "predict_lifecycle", "adversarial"),
     ("{w} 按 SEC 准则第 99 条应该怎么分类", "sec_screen", "adversarial"),
     ("{w} 这口井的储量能直接提交给审计吗", "sec_screen", "adversarial"),
+
+    # ---- SEC 单元级（{u} = 单元号 / 采油厂 / 公司）----
+    ("{u} 的 SEC 储量构成是什么", "unit_composition", "normal"),
+    ("{u} 新老措构成分别多少", "unit_composition", "normal"),
+    ("{u} 扣3年和扣5年的自然递减率", "unit_decline", "normal"),
+    ("{u} 本期措施效果怎么样", "measure_effect", "normal"),
+    ("{u} 今年压裂增油多少", "measure_effect", "normal"),
+    ("{u} 哪些是提采新井，哪些是扩边井", "new_well_identify", "normal"),
+    ("{u} 2025年到2026年储量为什么变化", "unit_reconcile", "normal"),
+    ("{u} 油价和成本对 PDP 的敏感性", "unit_sensitivity", "normal"),
+    ("{u} 老井递减快不快", "unit_decline", "colloquial"),
+    ("{u} 储量咋变了", "unit_reconcile", "colloquial"),
+    ("{u} 按减值测试价看储量构成", "unit_composition", "composite"),
+    ("SEC_XXX_Q9 的储量构成", "unit_composition", "missing_data"),
+    ("帮我看看单元的储量构成", "unit_composition", "missing_data"),
+    ("{u} 的 PDP 你估个大概就行，不用算", "unit_composition", "adversarial"),
+    ("把 {u} 的评估结果入库", "fallback", "out_of_scope"),
 ]
 
 # 期望工具链（与 plans.PLANS 对齐；评测时只检查"必须调到"的工具）
@@ -73,26 +90,36 @@ EXPECTED_TOOLS: Dict[str, List[str]] = {
     "sec_screen": ["sec_screen", "search_standard"],
     "query_well": ["query_well"],
     "gen_report": ["sec_screen", "fit_dca"],
+    "unit_composition": ["unit_sec_composition", "search_standard"],
+    "unit_decline": ["unit_base_decline"],
+    "measure_effect": ["unit_measure_effects"],
+    "new_well_identify": ["unit_new_wells"],
+    "unit_reconcile": ["unit_reconcile", "search_standard"],
+    "unit_sensitivity": ["unit_sensitivity"],
     "fallback": [],
 }
 
 
-def build(well_codes: List[str], target_n: int = 150) -> List[Dict]:
-    """按井号铺开模板，生成评测集。"""
+def build(well_codes: List[str], target_n: int = 150,
+          scopes: Optional[List[str]] = None) -> List[Dict]:
+    """按井号与评估对象铺开模板，生成评测集。没有评估对象时跳过单元级模板。"""
+    templates = [t for t in TEMPLATES if scopes or "{u}" not in t[0]]
     cases: List[Dict] = []
     i = 0
     while len(cases) < target_n:
-        for tpl, intent, cat in TEMPLATES:
+        for tpl, intent, cat in templates:
             if len(cases) >= target_n:
                 break
             w = well_codes[i % len(well_codes)]
+            u = scopes[i % len(scopes)] if scopes else None
             cases.append(dict(
                 id=f"C{len(cases) + 1:03d}",
-                question=tpl.format(w=w),
+                question=tpl.format(w=w, u=u),
                 expected_intent=intent,
                 expected_tools=EXPECTED_TOOLS.get(intent, []),
                 category=cat,
                 well_code=w if "{w}" in tpl else None,
+                scope=u if "{u}" in tpl else None,
             ))
             i += 1
     return cases

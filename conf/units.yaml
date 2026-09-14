@@ -1,0 +1,27 @@
+# SEC 评估单元层级：油田公司 -> 采油厂 -> SEC 单元
+#
+# 合成轨道按"区块 × 层系"划分单元，由 src/ingest/synth_adapter.py 读本文件写入
+# sec_unit / unit_well 两张表。真实轨道由对应适配器从储量单元台账写入同样两张表 ——
+# 上层（内核、服务、智能体）只读表，不读本文件。
+#
+# opex_factor：单元操作成本相对价格册基准的系数（高含水、边远、稠油单元成本更高）。
+version: "u1"
+company:
+  id: "CO"
+  name: "示例油田公司"
+plants:
+  - id: "PLANT_1"
+    name: "第一采油厂"
+    units:
+      - {id: "SEC_GLA_Q1", name: "GL-A 区块 Q1 层系", block: "GL-A", layer: "Q1", opex_factor: 0.95}
+      - {id: "SEC_GLA_Q2", name: "GL-A 区块 Q2 层系", block: "GL-A", layer: "Q2", opex_factor: 1.00}
+      - {id: "SEC_GLA_F1", name: "GL-A 区块 F1 层系", block: "GL-A", layer: "F1", opex_factor: 1.10}
+      - {id: "SEC_GLB_Q1", name: "GL-B 区块 Q1 层系", block: "GL-B", layer: "Q1", opex_factor: 1.00}
+      - {id: "SEC_GLB_Q2", name: "GL-B 区块 Q2 层系", block: "GL-B", layer: "Q2", opex_factor: 1.05}
+      - {id: "SEC_GLB_F1", name: "GL-B 区块 F1 层系", block: "GL-B", layer: "F1", opex_factor: 1.15}
+  - id: "PLANT_2"
+    name: "第二采油厂"
+    units:
+      - {id: "SEC_SBC_Q1", name: "SB-C 区块 Q1 层系", block: "SB-C", layer: "Q1", opex_factor: 0.90}
+      - {id: "SEC_SBC_Q2", name: "SB-C 区块 Q2 层系", block: "SB-C", layer: "Q2", opex_factor: 1.00}
+      - {id: "SEC_SBC_F1", name: "SB-C 区块 F1 层系", block: "SB-C", layer: "F1", opex_factor: 1.20}

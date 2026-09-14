@@ -12,3 +12,4 @@ data/processed/
 .DS_Store
 .idea/
 .vscode/
+data/synth_event_truth.csv

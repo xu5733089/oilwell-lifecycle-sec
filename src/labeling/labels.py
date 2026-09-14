@@ -97,17 +97,24 @@ def extract_one(wid: str, g: pd.DataFrame, events: pd.DataFrame,
     out["p_peak"] = _peak_pressure(g, peak_day, ld["peak_pressure"]) if peak_day else None
     out["cum_360"] = float(g[g["day_index"] <= 360]["oil_t"].sum())
 
-    # EUR：峰后拟合递减 + 峰前累产，历史不足则不出标签
+    # EUR：峰后拟合递减 + 峰前累产，历史不足则不出标签。
+    # v2 起为"自然递减"口径：有措施的井只用首次措施之前的数据（累产也截到措施前）。
+    # 早期数据预测不了几年后才做的措施；措施增油由 SEC 单元构成评估单列（src/sec/composition.py）。
     out.update(dca_model=None, di=None, b=None, d_min=None, eur=None)
     months = (g["day_index"].max() - g["day_index"].min()) / 30.4
+    gg = g
+    if ld["eur"].get("exclude_after_workover") and not events.empty:
+        days = events["day_index"].dropna()
+        if len(days):
+            gg = g[g["day_index"] < int(days.min())]
     if peak_day and months >= float(ld["eur"]["min_history_months"]):
-        post = g[(g["day_index"] >= peak_day) & (g["hours_on"] > 0) & (g["oil_t"] > 0)]
+        post = gg[(gg["day_index"] >= peak_day) & (gg["hours_on"] > 0) & (gg["oil_t"] > 0)]
         if len(post) >= 60:
             try:
                 tm = post["day_index"].to_numpy() / 30.4
                 qq = post["oil_t"].to_numpy()
                 f = dca.fit_best(tm, qq)
-                cum = float(g["oil_t"].sum())
+                cum = float(gg["oil_t"].sum())
                 # EUR = 已累产 + 剩余可采，与 services.fit_dca 同一口径
                 e = dca.eur(f, q_econ, t_start_month=float(tm.max() - tm.min()))
                 out.update(dca_model=f.model, di=f.di, b=f.b, d_min=f.d_min,

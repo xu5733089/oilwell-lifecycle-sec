@@ -1,6 +1,9 @@
 # 标签口径定义 —— 改动此文件必须同时改 version，历史标签按 version 并存
 # 对应方案 §3.3：这是最容易返工的地方，任何口径变更都可追溯、可重跑
-version: "v1"
+version: "v2"
+# v2（2026-09）：EUR 改为自然递减口径 —— 有措施的井只用首次措施前的数据。
+#   原因：合成数据的措施改为持续增油后，v1 的 EUR 标签混入了几年后才发生的措施增油，
+#   早期 90 天数据无从预测，EUR 预测 MAE 放大一个数量级。措施增油改由 SEC 单元构成评估单列。
 
 oil_break:                     # 见油时间
   metric: "oil_t"
@@ -22,3 +25,4 @@ peak_pressure:                 # 达峰压力
 eur:
   method: "dca"                # 递减曲线外推至经济极限，见 src/reserves/dca.py
   min_history_months: 12       # 历史不足 N 个月的井不产出 EUR 标签
+  exclude_after_workover: true # v2：只用首次措施前的数据（措施前峰后数据不足 60 点则不出 EUR 标签）

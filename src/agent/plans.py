@@ -62,11 +62,42 @@ PLANS: Dict[str, List[Step]] = {
     "gen_report": [
         Step("query_well", {"well_code": "well_code"}),
         Step("predict_lifecycle", {"well_code": "well_code"}, optional=True),
-        Step("fit_dca", {"well_code": "well_code", "price_deck_id": "price_deck_id"}),
+        # 年轻井做不了递减分析是正常业务状态；sec_screen 自己会把"不可得"写进清单，
+        # 这里设为必需步骤会让整份报告中断。
+        Step("fit_dca", {"well_code": "well_code", "price_deck_id": "price_deck_id"},
+             optional=True),
         Step("cross_check_reserves", {"well_code": "well_code"}, optional=True),
         Step("sec_screen", {"well_code": "well_code", "as_of": "as_of",
                             "price_deck_id": "price_deck_id"}),
         Step("search_standard", {}, {"query": "已证实储量 分类 五年规则 可靠技术", "top_k": 3}),
+    ],
+    # ---- SEC 单元级：储量构成与对账属于合规结论，必须带条款检索 ----
+    "unit_composition": [
+        Step("unit_sec_composition", {"scope": "scope", "as_of": "as_of", "scenario": "scenario"}),
+        Step("search_standard", {}, {"query": "已证实已开发储量 PDP 合理确定性 经济可采 价格口径",
+                                     "top_k": 3}),
+    ],
+    "unit_decline": [
+        Step("unit_base_decline", {"scope": "scope", "as_of": "as_of",
+                                   "exclude_years": "exclude_years"}),
+    ],
+    "measure_effect": [
+        Step("unit_measure_effects", {"scope": "scope", "as_of": "as_of",
+                                      "event_type": "event_type"}),
+    ],
+    "new_well_identify": [
+        Step("unit_new_wells", {"scope": "scope", "as_of": "as_of"}),
+    ],
+    "unit_reconcile": [
+        Step("unit_reconcile", {"scope": "scope", "from_as_of": "from_as_of",
+                                "to_as_of": "to_as_of", "scenario": "scenario"}),
+        Step("unit_change_attribution", {"scope": "scope", "from_as_of": "from_as_of",
+                                         "to_as_of": "to_as_of", "scenario": "scenario"},
+             optional=True),
+        Step("search_standard", {}, {"query": "储量变化 产量 修订 扩边 新发现 价格", "top_k": 3}),
+    ],
+    "unit_sensitivity": [
+        Step("unit_sensitivity", {"scope": "scope", "as_of": "as_of", "scenario": "scenario"}),
     ],
     "fallback": [],
 }

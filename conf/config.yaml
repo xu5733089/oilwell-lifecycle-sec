@@ -12,6 +12,10 @@ synth:
   seed: 20260908
   blocks: ["GL-A", "GL-B", "SB-C"]
   layers: ["Q1", "Q2", "F1"]
+  data_end: "2026-12-31"       # 数据截止日：在产井的记录统一截到这一天，单元级汇总才有公共时点
+  recent_frac: 0.10            # 上一评估年投产的井占基础井数的比例（让相邻两期都有新井）
+  extension_frac: 0.25         # 新井中位于已探明范围之外的扩边井比例
+  plan_years: [2025, 2026]     # 生成计划值的年份
 
 model:
   obs_days: 90                 # 新井早期观测窗口
@@ -38,7 +42,34 @@ llm:
   timeout_s: 60
   max_tool_calls: 8            # 单会话工具调用上限（§7.4 任务边界）
 
+# SEC 单元"新-老-措"构成评估（docs/dev-plan-sec-unit.md）
+sec_unit:
+  evaluation_dates: ["2025-12-31", "2026-12-31"]   # 可选评估基准日，须在价格册里有对应 as_of
+  period_months: 12            # 评估期长度：基准日前 N 个月内投产的井算本期新井，实施的措施算本期措施
+  new_well:                    # 提采新井 / 扩边井识别：看周边有没有评估期前已投产的老井
+    radius_m: 1500
+    min_old_neighbors: 3
+  measure:
+    max_pre_months: 24         # 措施前基线最长回看月数
+    min_pre_months: 6          # 措施前至少这么多个有效月，否则基线不可信、不评
+    min_post_months: 3         # 措施后至少这么多个有效月，否则"观察期不足"、不计增储
+  decline:
+    exclude_years: [3, 5]      # 老井基础递减：扣除近 N 年投产新井与近 N 年措施增油
+    min_fit_months: 12         # 单元递减拟合的最少月数
+  type_curve:
+    min_history_months: 24     # 进入类型曲线的老井至少要有这么长历史
+  oil_density_t_per_m3: 0.85   # 含水率换算用的原油密度
+  measure_types:
+    perforation: "补孔"
+    frac: "压裂"
+    acid: "酸化"
+    workover: "大修"
+    sand_control: "防砂"
+    waterflood: "注水受益"
+
 agent:
   intents: ["predict_lifecycle","find_analogs","fit_dca","estimate_reserves",
-            "cross_check","sec_screen","query_well","gen_report","fallback"]
+            "cross_check","sec_screen","query_well","gen_report",
+            "unit_composition","unit_decline","measure_effect","new_well_identify",
+            "unit_reconcile","unit_sensitivity","fallback"]
   router_confidence_threshold: 0.35

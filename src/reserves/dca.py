@@ -267,6 +267,58 @@ def _band(v: np.ndarray, n_boot: int) -> Dict[str, float]:
                 convention=CONVENTION, n_boot=int(n_boot))
 
 
+def _segment_sse(cx, cy, cxx, cxy, cyy, a, b) -> np.ndarray:
+    """区间 [a, b) 上一元线性回归的残差平方和，用前缀和 O(1) 求出；a、b 可以是数组。"""
+    a, b = np.asarray(a), np.asarray(b)
+    n = np.maximum(b - a, 1).astype(float)
+    sx, sy = cx[b] - cx[a], cy[b] - cy[a]
+    sxx, sxy, syy = cxx[b] - cxx[a], cxy[b] - cxy[a], cyy[b] - cyy[a]
+    vx = sxx - sx * sx / n
+    vy = syy - sy * sy / n
+    flat = vx <= 1e-12
+    sse = np.where(flat, vy, vy - (sxy - sx * sy / n) ** 2 / np.where(flat, 1.0, vx))
+    return np.where(b - a < 2, 0.0, np.maximum(sse, 0.0))
+
+
+def select_start(t_month, q, min_tail: int = 12, min_head: int = 3,
+                 min_gain: float = 0.25, max_breaks: int = 3) -> Dict:
+    """智能选取递减拟合的初始点：在对数产量上做分段线性回归，找最后一次趋势转折。
+
+    单元级产量序列里常见两种转折：前期新井陆续投产的上升段，以及大规模措施造成的台阶。
+    把转折前的数据混进递减拟合，会把上升段当递减、把台阶当异常，外推必然走样。
+
+    做法：在剩余序列上找使"两段直线残差和"最小的断点，若比一条直线的残差下降
+    不足 min_gain 就认为没有转折；有转折则从断点处继续找，最多 max_breaks 次。
+    """
+    t = np.asarray(t_month, dtype=float)
+    q = np.asarray(q, dtype=float)
+    ok = np.flatnonzero(np.isfinite(t) & np.isfinite(q) & (q > 0))
+    x, y = t[ok], np.log(q[ok])
+    cx = np.concatenate([[0.0], np.cumsum(x)])
+    cy = np.concatenate([[0.0], np.cumsum(y)])
+    cxx = np.concatenate([[0.0], np.cumsum(x * x)])
+    cxy = np.concatenate([[0.0], np.cumsum(x * y)])
+    cyy = np.concatenate([[0.0], np.cumsum(y * y)])
+    n = len(x)
+
+    start, breaks = 0, []
+    while n - start >= min_tail + min_head and len(breaks) < max_breaks:
+        one = float(_segment_sse(cx, cy, cxx, cxy, cyy, start, n))
+        ks = np.arange(start + min_head, n - min_tail + 1)
+        s = (_segment_sse(cx, cy, cxx, cxy, cyy, start, ks)
+             + _segment_sse(cx, cy, cxx, cxy, cyy, ks, n))
+        j = int(np.argmin(s))
+        if one <= 1e-12 or (one - float(s[j])) / one < min_gain:
+            break
+        start = int(ks[j])
+        breaks.append(start)
+
+    slope = float(np.polyfit(x[start:], y[start:], 1)[0]) if n - start >= 2 else float("nan")
+    return dict(start_index=int(ok[start]) if n else 0, n_tail=int(n - start),
+                breaks=[int(ok[b]) for b in breaks], tail_slope_per_month=slope,
+                declining=bool(np.isfinite(slope) and slope < 0))
+
+
 def synthesize_curve(q_peak: float, t_peak_day: float, eur_t: float,
                      b: float = 0.9, d_min_year: float = 0.075,
                      horizon_months: int = 120) -> Dict[str, list]:

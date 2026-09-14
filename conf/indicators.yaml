@@ -1,0 +1,24 @@
+# 开发与经营指标评价口径（运行监控雷达图）
+#
+# 评分：score = clip((值 - bad) / (good - bad) × 100, 0, 100)
+#   good 与 bad 的大小关系决定方向：good > bad 越大越好，good < bad 越小越好。
+# 分组综合评分 = 组内各指标得分按 weight 加权平均。
+# 锚点是示例值，按合成数据的开发方式（致密油水平井压裂投产，初期递减快、储采比低）标定；
+# 常规注水开发油田的递减率与储采比锚点完全不同，正式使用须由开发与经营部门按本油田水平重新标定。
+version: "i1"
+indicators:
+  natural_decline_pct:            {name: "自然递减率", group: development, unit: "%", good: 20, bad: 45, weight: 1.5}
+  comprehensive_decline_pct:      {name: "综合递减率", group: development, unit: "%", good: 15, bad: 40, weight: 1.0}
+  water_cut_pct:                  {name: "综合含水", group: development, unit: "%", good: 50, bad: 95, weight: 0.8}
+  water_cut_rise_pct:             {name: "含水上升", group: development, unit: "百分点", good: 0, bad: 10, weight: 1.0}
+  open_well_rate_pct:             {name: "开井率", group: development, unit: "%", good: 95, bad: 70, weight: 0.8}
+  measure_effective_rate_pct:     {name: "措施有效率", group: development, unit: "%", good: 90, bad: 50, weight: 1.0}
+  reserve_production_ratio:       {name: "储采比", group: development, unit: "年", good: 5, bad: 1.5, weight: 1.2}
+  production_plan_attainment_pct: {name: "产量计划完成率", group: operation, unit: "%", good: 102, bad: 85, weight: 1.2}
+  new_well_plan_attainment_pct:   {name: "新井产量计划完成率", group: operation, unit: "%", good: 100, bad: 70, weight: 1.0}
+  opex_usd_per_t:                 {name: "吨油操作成本", group: operation, unit: "USD/t", good: 60, bad: 250, weight: 1.2}
+  net_revenue_usd_per_t:          {name: "吨油净收入", group: operation, unit: "USD/t", good: 420, bad: 250, weight: 1.0}
+  profit_usd_per_t:               {name: "吨油利润", group: operation, unit: "USD/t", good: 300, bad: 50, weight: 1.5}
+groups:
+  development: "开发指标"
+  operation: "经营指标"

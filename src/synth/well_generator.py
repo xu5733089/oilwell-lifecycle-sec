@@ -26,7 +26,21 @@ Q_ECON_SYNTH = 2.0      # t/d，合成数据的经济极限，仅用于生成 eu
 RAMP_EXP = 0.62
 RAMP_CUM_COEF = 1.0 / (1.0 + RAMP_EXP)      # = 0.617
 
-
+# 措施的合成物理：增油幅度（相对措施时基础产量的倍数）、增量的月递减率、见效爬坡月数。
+# 只服务于合成数据；业务侧的措施类型中文名在 conf/config.yaml 的 sec_unit.measure_types。
+MEASURE_PHYSICS = {
+    "perforation":  dict(p=0.25, gain=(0.6, 1.4), d=(0.02, 0.05), ramp=0.0),
+    "frac":         dict(p=0.20, gain=(1.0, 2.2), d=(0.05, 0.10), ramp=0.0),
+    "acid":         dict(p=0.20, gain=(0.3, 0.8), d=(0.08, 0.18), ramp=0.0),
+    "workover":     dict(p=0.12, gain=(0.3, 0.7), d=(0.02, 0.05), ramp=0.0),
+    "sand_control": dict(p=0.10, gain=(0.2, 0.5), d=(0.02, 0.04), ramp=0.0),
+    "waterflood":   dict(p=0.13, gain=(0.2, 0.5), d=(0.01, 0.03), ramp=3.0),
+}
+LATE_MEASURE_PROB = 0.22     # 没有历史措施的老井，在近两年补一次措施的概率
+# 扩边井相对区块中心的偏移：离老井覆盖范围边缘 >= 1500 m。
+# 本评估年的扩边井放北侧、上一评估年的放南侧 —— 否则去年扩边井到今年已算老井，
+# 会让同一片区今年的扩边井"周边有老井"，与真值标签对不上（业务上那片区已探明，判提采也说得通）。
+EXT_Y_OFFSET = (5000.0, 6200.0)
 
 @dataclass
 class WellTruth:
@@ -40,6 +54,18 @@ class WellTruth:
     b: float
     di_month: float
     d_min_year: float
+    cohort: str = "base"          # base / recent（上一评估年投产）
+    is_extension: bool = False    # 位于已探明范围之外的扩边井
+
+
+def _measure_increment(d: np.ndarray, wo_day: int, q_base_at: float, gain: float,
+                       d_inc: float, ramp: float) -> np.ndarray:
+    """措施增油（叠加在基础产量之上）：措施时基础产量 × 增油倍数，按自身递减率衰减。"""
+    m = np.maximum(d - wo_day, 0.0) / 30.4
+    shape = np.exp(-d_inc * m)
+    if ramp > 0:
+        shape = shape * (1.0 - np.exp(-m / ramp))
+    return np.where(d >= wo_day, q_base_at * gain * shape, 0.0)
 
 
 def _arps(t_month: np.ndarray, qi: float, b: float, di: float, d_min: float) -> np.ndarray:
@@ -142,7 +168,7 @@ def _ooip_t(st: Dict[str, float], cp: Dict[str, float]) -> float:
     return float(pv * RHO_OIL / BO)
 
 
-def _daily_series(rng, lat, hist_days, first_prod: date):
+def _daily_series(rng, lat, hist_days, first_prod: date, aux: np.random.Generator):
     """生成日度产量/压力序列，并返回真值 p_peak 与 eur。"""
     d = np.arange(1, hist_days + 1, dtype=float)
     tm = d / 30.4
@@ -157,18 +183,32 @@ def _daily_series(rng, lat, hist_days, first_prod: date):
     ramp = 1.0 / (1.0 + np.exp(-(d - lat["t_oil_break"]) / 2.0))
     q = q * ramp
 
-    # 措施井：30% 概率在 400 天后有一次增产作业
+    # 措施井：30% 概率在 400 天后有一次增产作业（抽取顺序与旧版一致，主随机数流不变）；
+    # 没有措施的老井再以 LATE_MEASURE_PROB 在近两年补一次（独立随机数流 aux）。
     events: List[Dict] = []
+    ev_truth: List[Dict] = []
+    inc = np.zeros_like(d)
+    wo_day = None
     if hist_days > 500 and rng.random() < 0.30:
         wo_day = int(rng.uniform(400, min(hist_days - 90, 1500)))
-        bump, tau = rng.uniform(0.20, 0.65), rng.uniform(45, 110)
-        q = q * (1.0 + bump * np.exp(-np.maximum(d - wo_day, 0) / tau) * (d >= wo_day))
-        events.append(dict(day_index=wo_day,
-                           event_type=rng.choice(["frac", "acid", "pump_change"]),
-                           note="合成措施作业"))
+        rng.uniform(0.20, 0.65), rng.uniform(45, 110)           # 旧版脉冲参数：只保留抽取
+        rng.choice(["frac", "acid", "pump_change"])
+    elif hist_days > 500 and aux.random() < LATE_MEASURE_PROB:
+        wo_day = int(np.clip(hist_days - aux.uniform(90, 600), 400, hist_days - 90))
+    if wo_day is not None:
+        kinds = list(MEASURE_PHYSICS)
+        kind = str(aux.choice(kinds, p=[MEASURE_PHYSICS[k]["p"] for k in kinds]))
+        spec = MEASURE_PHYSICS[kind]
+        gain, d_inc = float(aux.uniform(*spec["gain"])), float(aux.uniform(*spec["d"]))
+        q_base_at = float(q[wo_day - 1])
+        inc = _measure_increment(d, wo_day, q_base_at, gain, d_inc, spec["ramp"])
+        q = q + inc
+        events.append(dict(day_index=wo_day, event_type=kind, note="合成措施"))
+        ev_truth.append(dict(day_index=wo_day, event_type=kind, gain=gain, d_inc_month=d_inc,
+                             ramp_month=spec["ramp"], q_base_t_per_d=q_base_at))
 
-    q = q * rng.lognormal(0.0, 0.065, size=q.shape)          # 计量噪声
-    q = np.maximum(q, 0.0)
+    noise = rng.lognormal(0.0, 0.065, size=q.shape)          # 计量噪声
+    q = np.maximum(q * noise, 0.0)
 
     # 停井段
     hours = np.full_like(d, 24.0)
@@ -221,7 +261,19 @@ def _daily_series(rng, lat, hist_days, first_prod: date):
     # 真值：达峰压力取真值峰日的 WHP；EUR 用长周期外推到经济极限
     peak_idx = int(np.clip(round(lat["t_peak"]) - 1, 0, len(df) - 1))
     p_peak = float(np.nanmean(whp[max(0, peak_idx - 1):peak_idx + 2]))
-    return df, events, p_peak
+
+    # 措施增油真值：只统计真正落进记录的那部分（经过计量噪声、停井、丢记录之后）
+    inc_monthly: List[Dict] = []
+    if ev_truth:
+        kept = np.ones(len(d), dtype=bool)
+        if len(drop):
+            kept[drop[drop < len(d)]] = False
+        realized = np.where((hours > 0) & kept, inc * noise, 0.0)
+        ev_truth[0]["realized_inc_t"] = float(realized.sum())
+        ym = pd.Series(realized, index=[x.isoformat()[:7] for x in dates])
+        g = ym[ym > 0].groupby(level=0).sum()
+        inc_monthly = [dict(ym=k, inc_oil_t=float(v)) for k, v in g.items()]
+    return df, events, p_peak, ev_truth, inc_monthly
 
 
 def _eur_truth(lat: Dict[str, float]) -> float:
@@ -237,9 +289,89 @@ def _eur_truth(lat: Dict[str, float]) -> float:
                  + lat["q_peak"] * lat["t_peak"] * RAMP_CUM_COEF)
 
 
-def generate(n_wells: int, seed: int, blocks: List[str], layers: List[str]) -> Dict[str, pd.DataFrame]:
+def _build_well(i: int, rng: np.random.Generator, aux: np.random.Generator, cohort: str,
+                blocks: List[str], layers: List[str], block_origin: Dict, field: Dict,
+                end: date, extension_frac: float) -> Dict:
+    """造一口井。cohort=base 时主随机数流的抽取顺序与旧版逐项一致。"""
+    wid = f"SYN{i + 1:04d}"
+    block = str(rng.choice(blocks))
+    layer = str(rng.choice(layers))
+    ox, oy = block_origin[block]
+    x_off = float(ox + rng.uniform(-3500, 3500))
+    y_off = float(oy + rng.uniform(-3500, 3500))
+    st = _sample_static(rng, trend=_geo_field(field[block], x_off, y_off))
+    cp = _sample_completion(rng, st)
+    lat = _latent(rng, st, cp)
+    lat["p_init"] = float(st["pressure_coef"] * st["tvd"] * 0.00981 * rng.uniform(0.42, 0.55))
+    lat["eur_ref"] = _eur_truth(lat)
+
+    if cohort == "base":
+        is_new = rng.random() < 0.25
+        if is_new:
+            rng.uniform(0, 210)                        # 旧版投产日抽取，保留以稳定随机数流
+            hist = int(rng.uniform(100, 210))
+            status = "producing"
+        else:
+            rng.uniform(0, 3000)
+            hist = int(rng.uniform(900, 2300))
+            status = "producing" if rng.random() < 0.85 else "shut_in"
+    else:                                              # recent：上一评估年内投产
+        is_new = True
+        first = date(end.year - 1, 1, 1) + timedelta(days=int(rng.uniform(0, 365)))
+        hist = (end - first).days + 1
+        status = "producing"
+
+    # 日期对齐：在产井的最后一条记录落在数据截止日；关停井在截止日前若干天停产。
+    # 只平移日期，不改产量序列 —— 单元级汇总需要一个公共时点。
+    stop = end - timedelta(days=int(aux.uniform(60, 400))) if status == "shut_in" else end
+    first_prod = stop - timedelta(days=hist - 1)
+
+    # 扩边井：挪到区块已探明范围之外（北侧），周边没有老井
+    is_ext = bool(is_new and aux.random() < extension_frac)
+    if is_ext:
+        x_off = float(ox + aux.uniform(-2500, 2500))
+        y_off = float(oy + (1.0 if cohort == "base" else -1.0) * aux.uniform(*EXT_Y_OFFSET))
+
+    pdf, evs, p_peak, ev_truth, inc_monthly = _daily_series(rng, lat, hist, first_prod, aux)
+    pdf.insert(0, "well_id", wid)
+
+    master = dict(
+        well_id=wid, well_code_anon=f"{block}-{i + 1:04d}", block=block, layer=layer,
+        well_type=cp["well_type"],
+        spud_date=(first_prod - timedelta(days=int(rng.uniform(60, 160)))).isoformat(),
+        completion_date=(first_prod - timedelta(days=int(rng.uniform(10, 45)))).isoformat(),
+        first_prod_date=first_prod.isoformat(),
+        x_off=x_off, y_off=y_off,
+        tvd=st["tvd"], md=cp["md"], lateral_length=cp["lateral_length"],
+        stage_count=cp["stage_count"], proppant_t=cp["proppant_t"],
+        frac_fluid_m3=cp["frac_fluid_m3"], status=status, data_source="SYNTHETIC")
+    static = dict(well_id=wid, layer=layer, toc_pct=st["toc_pct"],
+                  porosity_pct=st["porosity_pct"], perm_md=st["perm_md"],
+                  so_pct=st["so_pct"], sw_pct=st["sw_pct"],
+                  net_pay_m=st["net_pay_m"], sweet_spot_idx=st["sweet_spot_idx"],
+                  brittleness=st["brittleness"], pressure_coef=st["pressure_coef"],
+                  temp_c=st["temp_c"])
+    events = []
+    for e in evs:
+        e_date = first_prod + timedelta(days=e["day_index"] - 1)
+        events.append(dict(well_id=wid, dt=e_date.isoformat(), **e))
+    for t in ev_truth:
+        t.update(well_id=wid, dt=(first_prod + timedelta(days=t["day_index"] - 1)).isoformat())
+    truth = asdict(WellTruth(
+        well_id=wid, q_peak=lat["q_peak"], t_peak=lat["t_peak"], p_peak=p_peak,
+        t_oil_break=lat["t_oil_break"], eur=lat["eur_ref"],
+        ooip=_ooip_t(st, cp), b=lat["b"], di_month=lat["di_month"],
+        d_min_year=lat["d_min_year"], cohort=cohort, is_extension=is_ext))
+    return dict(master=master, static=static, prod=pdf, events=events, truth=truth,
+                event_truth=ev_truth,
+                inc_monthly=[dict(well_id=wid, **r) for r in inc_monthly])
+
+
+def generate(n_wells: int, seed: int, blocks: List[str], layers: List[str],
+             data_end: str = "2026-12-31", recent_frac: float = 0.10,
+             extension_frac: float = 0.25) -> Dict[str, pd.DataFrame]:
     rng = np.random.default_rng(seed)
-    masters, statics, prods, events, truths = [], [], [], [], []
+    end = date.fromisoformat(str(data_end))
 
     # 每个区块先摆几个"甜点中心"，构成平滑地质趋势场
     block_origin = {b: (k * 9000.0, k * 4000.0) for k, b in enumerate(blocks)}
@@ -249,67 +381,28 @@ def generate(n_wells: int, seed: int, blocks: List[str], layers: List[str]) -> D
                      rng.uniform(0.7, 1.5) * rng.choice([1.0, -1.0]), rng.uniform(1100, 2400))
                     for _ in range(3)]
 
+    wells: List[Dict] = []
+    common = dict(blocks=blocks, layers=layers, block_origin=block_origin, field=field,
+                  end=end, extension_frac=extension_frac)
     for i in range(n_wells):
-        wid = f"SYN{i + 1:04d}"
-        block = str(rng.choice(blocks))
-        layer = str(rng.choice(layers))
-        ox, oy = block_origin[block]
-        x_off = float(ox + rng.uniform(-3500, 3500))
-        y_off = float(oy + rng.uniform(-3500, 3500))
-        st = _sample_static(rng, trend=_geo_field(field[block], x_off, y_off))
-        cp = _sample_completion(rng, st)
-        lat = _latent(rng, st, cp)
-        lat["p_init"] = float(st["pressure_coef"] * st["tvd"] * 0.00981 * rng.uniform(0.42, 0.55))
-        lat["eur_ref"] = _eur_truth(lat)
+        wells.append(_build_well(i, rng, np.random.default_rng([seed, i, 17]), "base", **common))
+    # 上一评估年投产的批次用独立随机数流追加在后面，不扰动前面的井
+    rng_recent = np.random.default_rng([seed, 99991])
+    for j in range(int(round(n_wells * recent_frac))):
+        i = n_wells + j
+        wells.append(_build_well(i, rng_recent, np.random.default_rng([seed, i, 17]), "recent",
+                                 **common))
 
-        # 投产时间铺开在 2016–2026，让"按投产年份切分"有意义
-        is_new = rng.random() < 0.25
-        if is_new:
-            first_prod = date(2026, 1, 1) + timedelta(days=int(rng.uniform(0, 210)))
-            hist = int(rng.uniform(100, 210))
-            status = "producing"
-        else:
-            first_prod = date(2016, 1, 1) + timedelta(days=int(rng.uniform(0, 3000)))
-            hist = int(rng.uniform(900, 2300))
-            status = "producing" if rng.random() < 0.85 else "shut_in"
-
-        pdf, evs, p_peak = _daily_series(rng, lat, hist, first_prod)
-        pdf.insert(0, "well_id", wid)
-        prods.append(pdf)
-
-        for e in evs:
-            e_date = first_prod + timedelta(days=e["day_index"] - 1)
-            events.append(dict(well_id=wid, dt=e_date.isoformat(), **e))
-
-        masters.append(dict(
-            well_id=wid, well_code_anon=f"{block}-{i + 1:04d}", block=block, layer=layer,
-            well_type=cp["well_type"],
-            spud_date=(first_prod - timedelta(days=int(rng.uniform(60, 160)))).isoformat(),
-            completion_date=(first_prod - timedelta(days=int(rng.uniform(10, 45)))).isoformat(),
-            first_prod_date=first_prod.isoformat(),
-            x_off=x_off, y_off=y_off,
-            tvd=st["tvd"], md=cp["md"], lateral_length=cp["lateral_length"],
-            stage_count=cp["stage_count"], proppant_t=cp["proppant_t"],
-            frac_fluid_m3=cp["frac_fluid_m3"], status=status, data_source="SYNTHETIC"))
-
-        statics.append(dict(well_id=wid, layer=layer, toc_pct=st["toc_pct"],
-                            porosity_pct=st["porosity_pct"], perm_md=st["perm_md"],
-                            so_pct=st["so_pct"], sw_pct=st["sw_pct"],
-                            net_pay_m=st["net_pay_m"], sweet_spot_idx=st["sweet_spot_idx"],
-                            brittleness=st["brittleness"], pressure_coef=st["pressure_coef"],
-                            temp_c=st["temp_c"]))
-
-        truths.append(asdict(WellTruth(
-            well_id=wid, q_peak=lat["q_peak"], t_peak=lat["t_peak"], p_peak=p_peak,
-            t_oil_break=lat["t_oil_break"], eur=lat["eur_ref"],
-            ooip=_ooip_t(st, cp), b=lat["b"], di_month=lat["di_month"],
-            d_min_year=lat["d_min_year"])))
-
+    events = [e for w in wells for e in w["events"]]
+    ev_cols = ["well_id", "dt", "day_index", "event_type", "note"]
     return {
-        "well_master": pd.DataFrame(masters),
-        "geo_static": pd.DataFrame(statics),
-        "prod_daily": pd.concat(prods, ignore_index=True),
-        "well_event": pd.DataFrame(events) if events else pd.DataFrame(
-            columns=["well_id", "dt", "day_index", "event_type", "note"]),
-        "truth": pd.DataFrame(truths),
+        "well_master": pd.DataFrame([w["master"] for w in wells]),
+        "geo_static": pd.DataFrame([w["static"] for w in wells]),
+        "prod_daily": pd.concat([w["prod"] for w in wells], ignore_index=True),
+        "well_event": pd.DataFrame(events, columns=ev_cols),
+        "truth": pd.DataFrame([w["truth"] for w in wells]),
+        # 以下两项是真值，只落文件供测试与评测，不进业务表
+        "event_truth": pd.DataFrame([t for w in wells for t in w["event_truth"]]),
+        "measure_inc_monthly": pd.DataFrame([r for w in wells for r in w["inc_monthly"]],
+                                            columns=["well_id", "ym", "inc_oil_t"]),
     }

@@ -175,6 +175,78 @@ class TestEndToEnd(unittest.TestCase):
         self.assertGreater(int(n), 0)
 
 
+class TestUnitAgent(unittest.TestCase):
+    """SEC 单元级问答：路由、槽位、计划、端到端数值一致性。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.agent = Agent()
+        u = S.list_units()
+        cls.unit = u["plants"][0]["units"][0]["unit_id"]
+        cls.plant = u["plants"][0]["plant_name"]
+        cls.company = u["company"]["name"]
+
+    def test_scope_words_route_to_unit_intents(self):
+        cases = [(f"{self.unit} 的储量构成", "unit_composition"),
+                 (f"{self.plant} 扣3年自然递减率", "unit_decline"),
+                 (f"{self.unit} 本期压裂增油多少", "measure_effect"),
+                 (f"{self.company} 哪些是扩边井", "new_well_identify"),
+                 (f"{self.plant} 储量为什么变化", "unit_reconcile"),
+                 (f"{self.unit} 油价敏感性", "unit_sensitivity")]
+        for q, expect in cases:
+            self.assertEqual(router.keyword_route(q).intent, expect, q)
+
+    def test_well_questions_do_not_leak_into_unit_intents(self):
+        """"递减率"对一口井是递减分析，对一个单元才是老井基础递减。"""
+        self.assertEqual(router.keyword_route("GL-A-0357 的递减率是多少").intent, "fit_dca")
+
+    def test_scope_slots(self):
+        v = slots.rule_extract(f"{self.unit} 2025年到2026年按减值价对账，扣3年")
+        self.assertEqual(v["scope"], self.unit)
+        self.assertEqual((v["from_as_of"], v["to_as_of"]), ("2025-12-31", "2026-12-31"))
+        self.assertEqual(v["scenario"], "impairment")
+        self.assertEqual(v["exclude_years"], "3")
+        self.assertEqual(slots.rule_extract(f"{self.plant} 的储量构成")["scope"], self.plant)
+        self.assertEqual(slots.rule_extract("全公司的储量构成")["scope"], self.company)
+
+    def test_year_sets_matching_price_deck(self):
+        v = slots.rule_extract("GL-A-0357 2025年能进已证实储量吗")
+        self.assertEqual((v["as_of"], v["price_deck_id"]), ("2025-12-31", "deck_2025_12"))
+
+    def test_unit_scope_not_mistaken_for_well_code(self):
+        self.assertNotIn("well_code", slots.rule_extract(f"{self.unit} 的储量构成"))
+
+    def test_compliance_plans_retrieve_standards(self):
+        self.assertIn("search_standard", plans.describe("unit_composition"))
+        self.assertIn("search_standard", plans.describe("unit_reconcile"))
+
+    def test_composition_answer_is_consistent_and_cited(self):
+        ans = self.agent.answer(f"{self.unit} 的 SEC 储量构成")
+        self.assertEqual(ans.intent, "unit_composition")
+        self.assertTrue(ans.guard["ok"], ans.guard.get("violations"))
+        self.assertGreater(ans.guard["numbers_checked"], 10)
+        self.assertEqual(ans.citations["invalid"], [], ans.citations)
+        self.assertIn("预评估", ans.text)
+
+    def test_reconcile_and_sensitivity_answers_are_consistent(self):
+        for q in (f"{self.plant} 2025年到2026年储量为什么变化", f"{self.unit} 油价和成本敏感性",
+                  f"{self.unit} 本期措施效果", f"{self.company} 扣3年和扣5年自然递减率",
+                  f"{self.unit} 哪些是提采新井"):
+            ans = self.agent.answer(q)
+            self.assertTrue(ans.guard["ok"], (q, ans.guard.get("violations")))
+            self.assertTrue(all(t["status"] == "ok" for t in ans.tool_trace), (q, ans.tool_trace))
+
+    def test_missing_scope_asks(self):
+        ans = self.agent.answer("帮我看看单元的储量构成")
+        self.assertTrue(ans.needs_clarification)
+        self.assertIn("评估对象", ans.text)
+
+    def test_unknown_unit_reported_honestly(self):
+        ans = self.agent.answer("SEC_XXX_Q9 的储量构成")
+        self.assertTrue(any(t.get("error_kind") == "kernel" for t in ans.tool_trace))
+        self.assertTrue(ans.guard["ok"], ans.guard.get("violations"))
+
+
 class TestServiceEnvelope(unittest.TestCase):
     REQUIRED = ("model_version", "label_def_version", "data_source", "trace_id")
 
@@ -185,6 +257,15 @@ class TestServiceEnvelope(unittest.TestCase):
                        (S.estimate_reserves_volumetric, {"mc_samples": 500}),
                        (S.cross_check_reserves, {}), (S.sec_screen, {})]:
             out = fn(w, **kw)
+            for k in self.REQUIRED:
+                self.assertIn(k, out, f"{fn.__name__} 缺少追溯字段 {k}")
+
+    def test_unit_services_return_traceability_fields(self):
+        unit = S.list_units()["plants"][0]["units"][0]["unit_id"]
+        for fn in (S.list_units, S.unit_sec_composition, S.unit_production_composition,
+                   S.unit_base_decline, S.unit_new_wells, S.unit_measure_effects, S.unit_reconcile,
+                   S.unit_sensitivity, S.unit_change_attribution, S.unit_indicators):
+            out = fn() if fn is S.list_units else fn(unit)
             for k in self.REQUIRED:
                 self.assertIn(k, out, f"{fn.__name__} 缺少追溯字段 {k}")
 

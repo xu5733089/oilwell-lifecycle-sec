@@ -55,6 +55,8 @@ def _search_standard(query: str, top_k: int = 3, trace_id: Optional[str] = None)
 
 
 _RETRIEVER = None
+_SCOPE = "评估对象：SEC 单元号、采油厂名称或公司名称"
+_SCENARIO = "价格情景：sec（SEC 价）/ assessment（考核价）/ impairment（减值测试价）"
 
 REGISTRY: Dict[str, ToolSpec] = {
     t.name: t for t in [
@@ -84,6 +86,30 @@ REGISTRY: Dict[str, ToolSpec] = {
         ToolSpec("search_standard", _search_standard,
                  "检索 SEC 储量准则条款原文，返回条款号与正文",
                  dict(query="检索问题", top_k="返回条数，默认 3"), ["query"]),
+        # ---- SEC 单元级 ----
+        ToolSpec("unit_sec_composition", S.unit_sec_composition,
+                 "SEC 单元（或采油厂、公司）已证实已开发储量的新-老-措构成：老井基础、措施增储、提采新井、扩边井",
+                 dict(scope=_SCOPE, as_of="评估基准日", scenario=_SCENARIO), ["scope"]),
+        ToolSpec("unit_base_decline", S.unit_base_decline,
+                 "老井基础递减：扣除近 N 年新井与措施增油后的自然递减率与综合递减率",
+                 dict(scope=_SCOPE, as_of="评估基准日", exclude_years="扣除年限，如 3,5"), ["scope"]),
+        ToolSpec("unit_measure_effects", S.unit_measure_effects,
+                 "本期措施效果：措施前后日产、已实现增油、增加可采储量，按措施类型汇总",
+                 dict(scope=_SCOPE, as_of="评估基准日", event_type="措施类型，可省略"), ["scope"]),
+        ToolSpec("unit_new_wells", S.unit_new_wells,
+                 "本期新井自动分类（提采新井 / 扩边井）及各井储量与取值方法",
+                 dict(scope=_SCOPE, as_of="评估基准日"), ["scope"]),
+        ToolSpec("unit_reconcile", S.unit_reconcile,
+                 "期初到期末储量对账（产量消耗、价格修订、新井、措施、扩边、技术修订）与产量法折耗率",
+                 dict(scope=_SCOPE, from_as_of="期初基准日", to_as_of="期末基准日",
+                      scenario=_SCENARIO), ["scope"]),
+        ToolSpec("unit_change_attribution", S.unit_change_attribution,
+                 "单元储量变化归因：各行项影响大小及对应的具体井、措施、价格参数",
+                 dict(scope=_SCOPE, from_as_of="期初基准日", to_as_of="期末基准日",
+                      scenario=_SCENARIO), ["scope"]),
+        ToolSpec("unit_sensitivity", S.unit_sensitivity,
+                 "油价、成本、产量、递减率对 PDP 的影响曲线与敏感权重",
+                 dict(scope=_SCOPE, as_of="评估基准日", scenario=_SCENARIO), ["scope"]),
     ]
 }
 
@@ -98,12 +124,16 @@ class ToolCall:
     result: Optional[Dict] = None
     error: Optional[str] = None
     elapsed_ms: int = 0
+    # 失败性质：kernel = 内核按业务规则拒绝（井不存在、历史不足）；
+    # args = 参数不合法；internal = 内部异常；boundary = 越过任务边界被拒
+    error_kind: Optional[str] = None
 
     def to_dict(self) -> Dict:
         d = dict(tool=self.name, args=self.args, status=self.status,
                  elapsed_ms=self.elapsed_ms)
         if self.error:
             d["error"] = self.error
+            d["error_kind"] = self.error_kind
         return d
 
 
@@ -118,13 +148,14 @@ class ToolRunner:
     def run(self, name: str, **args) -> ToolCall:
         if name not in REGISTRY:
             call = ToolCall(name, args, status="denied",
-                            error=f"工具 {name!r} 不在白名单内，拒绝执行")
+                            error=f"工具 {name!r} 不在白名单内，拒绝执行", error_kind="boundary")
             self.calls.append(call)
             trace.audit(self.trace_id, "agent", f"tool:{name}", args, "denied")
             return call
         if len(self.calls) >= self.max_calls:
             call = ToolCall(name, args, status="denied",
-                            error=f"单会话工具调用已达上限 {self.max_calls} 次")
+                            error=f"单会话工具调用已达上限 {self.max_calls} 次",
+                            error_kind="boundary")
             self.calls.append(call)
             trace.audit(self.trace_id, "agent", f"tool:{name}", args, "denied")
             return call
@@ -135,11 +166,12 @@ class ToolRunner:
             result = spec.fn(trace_id=self.trace_id, **args)
             call = ToolCall(name, args, "ok", result=result)
         except S.KernelError as exc:
-            call = ToolCall(name, args, "failed", error=str(exc))
+            call = ToolCall(name, args, "failed", error=str(exc), error_kind="kernel")
         except TypeError as exc:
-            call = ToolCall(name, args, "failed", error=f"参数不合法：{exc}")
+            call = ToolCall(name, args, "failed", error=f"参数不合法：{exc}", error_kind="args")
         except Exception as exc:                      # 兜底，不让异常冒到用户面前
-            call = ToolCall(name, args, "failed", error=f"内部错误：{type(exc).__name__}: {exc}")
+            call = ToolCall(name, args, "failed", error=f"内部错误：{type(exc).__name__}: {exc}",
+                            error_kind="internal")
         call.elapsed_ms = int((time.time() - t0) * 1000)
         self.calls.append(call)
         trace.audit(self.trace_id, "agent", f"tool:{name}", args, call.status)

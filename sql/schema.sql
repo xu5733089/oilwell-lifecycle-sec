@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS well_event (
     well_id    TEXT NOT NULL,
     dt         TEXT NOT NULL,
     day_index  INTEGER,
-    event_type TEXT NOT NULL,          -- frac / acid / pump_change / shut_in / convert_injection
+    event_type TEXT NOT NULL,          -- perforation / frac / acid / workover / sand_control / waterflood
     note       TEXT,
     PRIMARY KEY (well_id, dt, event_type)
 );
@@ -120,6 +120,54 @@ CREATE TABLE IF NOT EXISTS prediction (
     input_hash        TEXT,
     output_json       TEXT,
     created_at        TEXT
+);
+
+-- SEC 评估单元层级：油田公司 -> 采油厂 -> SEC 单元
+CREATE TABLE IF NOT EXISTS sec_unit (
+    unit_id       TEXT PRIMARY KEY,
+    unit_name     TEXT NOT NULL,
+    plant_id      TEXT NOT NULL,
+    plant_name    TEXT NOT NULL,
+    company_id    TEXT NOT NULL,
+    company_name  TEXT NOT NULL,
+    area_type     TEXT,                -- 老区 / 新区
+    opex_factor   REAL DEFAULT 1.0,    -- 单元操作成本系数
+    data_source   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS unit_well (
+    unit_id  TEXT NOT NULL,
+    well_id  TEXT NOT NULL,
+    PRIMARY KEY (unit_id, well_id)
+);
+
+-- 产量与工作量计划（规划部门下达），用于计划与实际对标
+CREATE TABLE IF NOT EXISTS unit_plan_monthly (
+    unit_id             TEXT NOT NULL,
+    ym                  TEXT NOT NULL,     -- YYYY-MM
+    plan_new_wells      INTEGER,
+    plan_new_oil_t      REAL,
+    plan_measure_wells  INTEGER,
+    plan_measure_inc_t  REAL,
+    plan_old_oil_t      REAL,
+    data_source         TEXT NOT NULL,
+    PRIMARY KEY (unit_id, ym)
+);
+
+-- 历史评估成果：每期、每单元、每价格情景、每个构成一行。对账时直接取上期入库结果
+CREATE TABLE IF NOT EXISTS sec_eval_record (
+    as_of          TEXT NOT NULL,
+    unit_id        TEXT NOT NULL,
+    scenario       TEXT NOT NULL,      -- sec / assessment / impairment
+    component      TEXT NOT NULL,      -- old_base / measure / new_infill / extension / total
+    reserves_t     REAL,
+    n_wells        INTEGER,
+    method         TEXT,
+    detail_json    TEXT,
+    model_version  TEXT,
+    trace_id       TEXT,
+    created_at     TEXT,
+    PRIMARY KEY (as_of, unit_id, scenario, component)
 );
 
 -- 全链路留痕：任何一次工具调用、任何一次智能体应答都能顺 trace_id 回溯

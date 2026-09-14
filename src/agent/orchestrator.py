@@ -87,16 +87,17 @@ class Agent:
                 break
 
         results = runner.results()
+        evidence = _evidence(results, runner)
         text = self._compose(question, r.intent, results, runner)
-        g = guard.check(text, results)
+        g = guard.check(text, evidence)
         if not g.ok:
             # 一次重写机会；仍不通过就降级为模板成文（模板的数字直接取自 JSON）
             text = self._compose(question, r.intent, results, runner, strict=True)
-            g = guard.check(text, results)
+            g = guard.check(text, evidence)
         degraded = False
         if not g.ok:
             text = _template(r.intent, results, runner)
-            g = guard.check(text, results)
+            g = guard.check(text, evidence)
             degraded = True
 
         valid = _valid_citations(results)
@@ -164,6 +165,15 @@ def _valid_citations(results: Dict) -> List[str]:
 
 
 _CORPUS_CITATIONS = None
+
+
+def _evidence(results: Dict, runner: ToolRunner) -> Dict:
+    """数值回查的依据：工具成功返回的 JSON + 工具失败时给出的说明。
+
+    失败说明同样出自内核或工具边界（"峰后历史仅 44 天，不足 180 天"），
+    不是模型写的；把它排除在外，会让如实转述拒绝原因被误判为幻觉。
+    """
+    return dict(results=results, failures=[c.error for c in runner.failures() if c.error])
 
 
 def _fmt(v, unit: str = "") -> str:
@@ -260,6 +270,8 @@ def _template(intent: str, results: Dict, runner: ToolRunner) -> str:
         lines.append("")
         lines.append(DISCLAIMER)
 
+    lines += _unit_template(results)
+
     q = results.get("query_well")
     if q and not lines:
         lines.append(f"【单井概况】{q['well_code']}｜{q['block']} {q['layer']}｜{q['well_type']}")
@@ -273,3 +285,136 @@ def _template(intent: str, results: Dict, runner: ToolRunner) -> str:
     if not lines:
         lines.append("工具未返回可用结果，无法作答。")
     return "\n".join(lines).strip()
+
+
+LEVEL_CN = {"unit": "SEC 单元", "plant": "采油厂", "company": "公司"}
+
+
+def _scope_title(r: Dict) -> str:
+    s = r["scope"]
+    return f"{s['name']}（{LEVEL_CN.get(s['level'], s['level'])}，{s['n_units']} 个单元）"
+
+
+def _citations_line(results: Dict) -> List[str]:
+    std = results.get("search_standard", {}).get("results", [])
+    cites = [c["citation"] for c in std if c.get("citation")]
+    return ["  · 准则依据：" + "；".join(f"[{c}]" for c in dict.fromkeys(cites))] if cites else []
+
+
+def _unit_template(results: Dict) -> List[str]:
+    """SEC 单元级模板成文。与单井模板同一规矩：每个数字都直接取自工具字段。"""
+    L: List[str] = []
+
+    c = results.get("unit_sec_composition")
+    if c:
+        L.append(f"【SEC 储量构成】{_scope_title(c)}｜基准日 {c['as_of']}｜{c['scenario_label']}")
+        L.append(f"  · 已证实已开发储量（{c['category']}）合计 {_fmt(c['total_t'], 't')}；"
+                 f"评估期 {c['period_start_ym']} ~ {c['period_end_ym']}，本期产量 {_fmt(c['production_in_period_t'], 't')}")
+        for x in c["components"]:
+            L.append(f"  · {x['name']}：{_fmt(x['reserves_t'], 't')}，占 {_fmt(x['share_pct'])}%"
+                     f"（{x['n_items']} 项；{x['basis']}）")
+        o, m, n = c["old_wells"], c["measures"], c["new_wells"]
+        L.append(f"  · 老井逐井评估 {o['n_evaluated']} 口（其中峰后历史不足改用类比法 {o['n_short_history']} 口），"
+                 f"近期未生产 {o['n_not_producing']} 口不计入；老井最佳估计 {_fmt(o['best_estimate_t'], 't')}")
+        L.append(f"  · 本期措施 {m['n_in_period']} 次，可评 {m['n_evaluated']} 次、有效 {m['n_effective']} 次；"
+                 f"本期新井：提采新井 {n['n_infill']} 口、扩边井 {n['n_extension']} 口")
+        L.append(f"  · 经济参数：油价 {_fmt(c['economics']['price_usd_bbl'])} USD/bbl，"
+                 f"单井经济极限 {_fmt(c['economics']['q_econ_t_per_d'], 't/d')}（{c['economics']['note']}）")
+        if c.get("aggregation_note"):
+            L.append(f"  · {c['aggregation_note']}")
+        L += _citations_line(results)
+        L += ["", DISCLAIMER, ""]
+
+    d = results.get("unit_base_decline")
+    if d:
+        L.append(f"【老井基础递减】{_scope_title(d)}｜基准日 {d['as_of']}")
+        for r in d["results"]:
+            L.append(f"  · 扣近 {r['exclude_years']} 年新井与措施（{r['window_start_ym']} ~ {r['window_end_ym']}，"
+                     f"{r['n_months']} 个月）：自然递减率 月 {_fmt(r['natural_monthly_pct'])}% / "
+                     f"年 {_fmt(r['natural_annual_pct'])}%；综合递减率 月 {_fmt(r['comprehensive_monthly_pct'])}% / "
+                     f"年 {_fmt(r['comprehensive_annual_pct'])}%（拟合 R² {_fmt(r['natural_fit_r2'])}）")
+        L.append(f"  · 口径：{d['definition']}")
+        L.append("")
+
+    me = results.get("unit_measure_effects")
+    if me:
+        ov = me["overall"]
+        L.append(f"【本期措施效果】{_scope_title(me)}｜基准日 {me['as_of']}")
+        L.append(f"  · 共 {ov['n']} 次，可评 {ov['n_evaluated']} 次，有效 {ov['n_effective']} 次"
+                 f"（有效率 {_fmt(ov['effective_rate_pct'])}%）；措施前单井日产 {_fmt(ov['pre_rate_avg_t_per_d'], 't/d')}，"
+                 f"措施后 {_fmt(ov['post_rate_avg_t_per_d'], 't/d')}，日产增幅 {_fmt(ov['rate_gain_avg_t_per_d'], 't/d')}")
+        L.append(f"  · 增加可采储量合计 {_fmt(ov['inc_eur_total_t'], 't')}（已实现增油 {_fmt(ov['realized_total_t'], 't')}，"
+                 f"增加的剩余可采 {_fmt(ov['inc_remaining_total_t'], 't')}），单次平均 {_fmt(ov['inc_eur_avg_t'], 't')}")
+        for x in me["by_type"]:
+            L.append(f"    - {x['name']}：{x['n']} 次，有效 {x['n_effective']} 次，"
+                     f"单次增加可采 {_fmt(x['inc_eur_avg_t'], 't')}，合计 {_fmt(x['inc_eur_total_t'], 't')}")
+        top = sorted((x for x in me["measures"] if x["inc_eur_t"] is not None),
+                     key=lambda x: -x["inc_eur_t"])[:3]
+        if top:
+            L.append("  · 增加可采最多的措施：" + "；".join(
+                f"{x['well_code']}（{x['event_name']}，{x['event_ym']}）{_fmt(x['inc_eur_t'], 't')}" for x in top))
+        L.append(f"  · 口径：{me['definition']}")
+        L.append("")
+
+    nw = results.get("unit_new_wells")
+    if nw:
+        L.append(f"【本期新井识别】{_scope_title(nw)}｜基准日 {nw['as_of']}")
+        L.append(f"  · 规则：{nw['rule']['text']}")
+        L.append(f"  · 提采新井 {nw['n_infill']} 口，扩边井 {nw['n_extension']} 口")
+        for code, title in (("infill", "提采新井"), ("extension", "扩边井")):
+            ws = [w for w in nw["wells"] if w["category_code"] == code][:3]
+            if ws:
+                L.append(f"  · {title}（储量前三）：" + "；".join(
+                    f"{w['well_code']}（{w['unit_id']}，投产 {w['first_prod_ym']}，周边老井 {w['n_old_neighbors']} 口，"
+                    f"最近老井 {_fmt(w['nearest_old_m'], 'm')}）{_fmt(w['reserves_t'], 't')}，{w['basis']}" for w in ws))
+        L.append("")
+
+    rc = results.get("unit_reconcile")
+    if rc:
+        L.append(f"【储量对账】{_scope_title(rc)}｜{rc['from_as_of']} → {rc['to_as_of']}｜"
+                 f"情景 {rc['scenario']}｜期初来源：{rc['opening_source']}")
+        for r in rc["table"]:
+            L.append(f"  · {r['item']}：{_fmt(r['value'], 't')}")
+        L.append(f"  · 闭合检查：{'闭合' if rc['balanced'] else '不闭合'}（差额 {_fmt(rc['difference'], 't')}）；"
+                 f"产量法折耗率 {_fmt(rc['depletion_rate_pct'])}%")
+        L.append(f"  · 说明：{rc['note']}")
+
+    at = results.get("unit_change_attribution")
+    if at:
+        L.append(f"【变化归因】PDP 由 {_fmt(at['opening_t'], 't')} 变为 {_fmt(at['closing_t'], 't')}，"
+                 f"变化 {_fmt(at['change_t'], 't')}")
+        for dr in at["drivers"]:
+            ev = "；".join(_evidence_text(dr["evidence_kind"], e) for e in dr["evidence"])
+            L.append(f"  · {dr['item']} {_fmt(dr['value_t'], 't')}（占 {_fmt(dr['share_pct'])}%）"
+                     + (f"：{ev}" if ev else ""))
+    if rc or at:
+        L += _citations_line(results)
+        L += ["", DISCLAIMER, ""]
+
+    s = results.get("unit_sensitivity")
+    if s:
+        L.append(f"【PDP 敏感性】{_scope_title(s)}｜基准日 {s['as_of']}｜{s['scenario_label']}，"
+                 f"基准油价 {_fmt(s['base_price_usd_bbl'])} USD/bbl，最佳估计 {_fmt(s['base_best_estimate_t'], 't')}")
+        L.append(f"  · 敏感权重（{s['perturbation']}）：" + "；".join(
+            f"{w['name']} {_fmt(w['weight_pct'])}%（PDP 摆幅 {_fmt(w['swing_t'], 't')}）" for w in s["weights"]))
+        for cv in s["curves"]:
+            L.append(f"  · {cv['name']}（{cv['unit']}）从 {_fmt(cv['x'][0])} 到 {_fmt(cv['x'][-1])}："
+                     f"PDP 变化 {_fmt(cv['delta_t'][0], 't')} ~ {_fmt(cv['delta_t'][-1], 't')}")
+        L.append("  · 各单元最敏感参数：" + "；".join(f"{u['unit_id']} {u['top_param']}" for u in s["units"]))
+        L.append(f"  · 口径：{s['note']}")
+        L.append("")
+    return L
+
+
+def _evidence_text(kind: str, e: Dict) -> str:
+    if kind == "wells":
+        return f"{e['well_code']} {_fmt(e['reserves_t'], 't')}（{e['basis']}，投产 {e['months_on']} 个月）"
+    if kind == "measures":
+        return f"{e['well_code']} {e['event_name']}（{e['event_ym']}）增加可采 {_fmt(e['inc_eur_t'], 't')}"
+    if kind == "economics":
+        return (f"油价 {_fmt(e['price_open_usd_bbl'])} → {_fmt(e['price_close_usd_bbl'])} USD/bbl，"
+                f"单井经济极限 {_fmt(e['q_econ_open_t_per_d'])} → {_fmt(e['q_econ_close_t_per_d'])} t/d")
+    if kind == "wells_rate_change":
+        return (f"{e['well_code']} 日产 {_fmt(e['rate_open_t_per_d'])} → {_fmt(e['rate_close_t_per_d'])} t/d，"
+                f"含水 {_fmt(e['water_cut_open_pct'])}% → {_fmt(e['water_cut_close_pct'])}%")
+    return ""

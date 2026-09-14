@@ -32,6 +32,17 @@ def price_decks() -> Dict[str, Any]:
     return _load("price_deck.yaml")["decks"]
 
 
+@lru_cache(maxsize=None)
+def units() -> Dict[str, Any]:
+    """SEC 单元层级（仅合成适配器读取；业务代码读 sec_unit / unit_well 表）。"""
+    return _load("units.yaml")
+
+
+@lru_cache(maxsize=None)
+def indicators() -> Dict[str, Any]:
+    return _load("indicators.yaml")
+
+
 def label_def_version() -> str:
     return str(label_def()["version"])
 

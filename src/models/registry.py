@@ -36,6 +36,12 @@ def load(version: str | None = None) -> Dict[str, Any]:
         return pickle.load(f)
 
 
+def set_latest(version: str) -> None:
+    if not (path("artifacts_dir") / f"model_{version}.pkl").exists():
+        raise FileNotFoundError(f"模型版本 {version} 的产物不存在")
+    (path("artifacts_dir") / "LATEST").write_text(version, encoding="utf-8")
+
+
 def latest_version() -> str | None:
     p = path("artifacts_dir") / "LATEST"
     return p.read_text(encoding="utf-8").strip() if p.exists() else None

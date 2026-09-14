@@ -16,6 +16,7 @@ import json
 from typing import Dict, List
 
 from ..config import path
+from ..models import registry
 from ..pipeline import run_training
 
 SPLITS = ("time", "group", "random")
@@ -27,6 +28,17 @@ NOTE = {
 
 
 def run(obs_days: int | None = None) -> Dict:
+    # 每次 run_training 都会把 LATEST 指向自己训出的模型；三种切分跑完，线上模型就成了
+    # 随机切分训出来的那个。评测不能顺手把服务用的模型换掉，结束后恢复原来的版本。
+    served = registry.latest_version()
+    try:
+        return _run(obs_days)
+    finally:
+        if served:
+            registry.set_latest(served)
+
+
+def _run(obs_days: int | None) -> Dict:
     rows: List[Dict] = []
     for split in SPLITS:
         meta = run_training(obs_days=obs_days, split_method=split)

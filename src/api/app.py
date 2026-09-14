@@ -139,6 +139,19 @@ routes = [
           methods=["POST", "GET"]),
     Route(f"{API}/sec/screen", _wrap(S.sec_screen, "well_code"), methods=["POST", "GET"]),
     Route(f"{API}/sec/reconcile", _wrap(S.reserves_reconcile, "values"), methods=["POST"]),
+    # SEC 单元"新-老-措"构成评估：scope = 单元号 / 采油厂 / 公司
+    Route(f"{API}/units", _wrap(S.list_units), methods=["POST", "GET"]),
+    Route(f"{API}/unit/composition", _wrap(S.unit_sec_composition, "scope"), methods=["POST", "GET"]),
+    Route(f"{API}/unit/production", _wrap(S.unit_production_composition, "scope"),
+          methods=["POST", "GET"]),
+    Route(f"{API}/unit/decline", _wrap(S.unit_base_decline, "scope"), methods=["POST", "GET"]),
+    Route(f"{API}/unit/new-wells", _wrap(S.unit_new_wells, "scope"), methods=["POST", "GET"]),
+    Route(f"{API}/unit/measures", _wrap(S.unit_measure_effects, "scope"), methods=["POST", "GET"]),
+    Route(f"{API}/unit/reconcile", _wrap(S.unit_reconcile, "scope"), methods=["POST", "GET"]),
+    Route(f"{API}/unit/sensitivity", _wrap(S.unit_sensitivity, "scope"), methods=["POST", "GET"]),
+    Route(f"{API}/unit/attribution", _wrap(S.unit_change_attribution, "scope"),
+          methods=["POST", "GET"]),
+    Route(f"{API}/unit/indicators", _wrap(S.unit_indicators, "scope"), methods=["POST", "GET"]),
 ]
 
 if WEB_DIR.exists():

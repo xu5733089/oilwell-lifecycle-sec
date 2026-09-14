@@ -7,7 +7,8 @@
     python -m src.cli eval-algo       # 三种切分方式对比（证明不能用随机切分）
     python -m src.cli eval-agent      # 跑评测集，出智能体指标
     python -m src.cli serve           # 起 HTTP 服务
-    python -m src.cli report GL-A-0001
+    python -m src.cli report GL-A-0357
+    python -m src.cli unit-eval       # SEC 单元"新-老-措"构成评估并入库
 """
 from __future__ import annotations
 
@@ -106,7 +107,7 @@ def cmd_demo(args) -> None:
     print("=" * 72)
     print("演示主线三：自然语言提问 —— 大模型只编排与成文，数字全部来自工具")
     print("=" * 72)
-    from .agent.orchestrator import Agent
+    from .agent.orchestrator import Agent, _evidence_text
     ans = Agent().answer(f"{old_code} 的 SEC 储量预评估结果是什么")
     print(f"  意图 {ans.intent}（{ans.route['method']}，置信度 {ans.route['confidence']}）")
     print("  工具调用轨迹：", " -> ".join(
@@ -117,6 +118,48 @@ def cmd_demo(args) -> None:
     print(f"  条款引用：{ans.citations.get('cited')}，无效引用 {ans.citations.get('invalid')}")
     print("-" * 72)
     print(ans.text)
+
+    print()
+    print("=" * 72)
+    print('演示主线四：SEC 单元"新-老-措"构成 —— 自动识别新井、剥离措施增油、对账落到单井')
+    print("=" * 72)
+    scope = S.list_units()["company"]["name"]
+    comp = S.unit_sec_composition(scope)
+    print(f"  {comp['scope']['name']}（{comp['scope']['n_units']} 个 SEC 单元）{comp['as_of']} "
+          f"{comp['scenario_label']} PDP {comp['total_t']:,.0f} t")
+    for c in comp["components"]:
+        print(f"    {c['name']:6s} {c['reserves_t']:>12,.0f} t  占 {c['share_pct']:>5}%  "
+              f"（{c['n_items']} 项｜{c['basis']}）")
+    nw = S.unit_new_wells(scope)
+    print(f"  本期新井自动分类：提采新井 {nw['n_infill']} 口、扩边井 {nw['n_extension']} 口"
+          f"（规则：{nw['rule']['text']}）")
+    rc = S.unit_reconcile(scope)
+    print(f"  对账 {rc['from_as_of']} → {rc['to_as_of']}（期初来源：{rc['opening_source']}，"
+          f"闭合 {'是' if rc['balanced'] else '否'}，折耗率 {rc['depletion_rate_pct']}%）")
+    for r in rc["table"]:
+        print(f"    {r['item']:10s} {r['value']:>14,.0f} t")
+    att = S.unit_change_attribution(scope)
+    print("  变化归因（前三项）：")
+    for d in att["drivers"][:3]:
+        ev = _evidence_text(d["evidence_kind"], d["evidence"][0]) if d["evidence"] else ""
+        print(f"    {d['item']:10s} {d['value_t']:>+14,.0f} t（占 {d['share_pct']}%）"
+              + (f"  例：{ev}" if ev else ""))
+
+
+def cmd_unit_eval(args) -> None:
+    from .api import services as S
+    dates = [args.as_of] if args.as_of else [str(d) for d in S._su()["evaluation_dates"]]
+    scenarios = S.SCENARIOS if args.scenario == "all" else (args.scenario,)
+    for d in dates:
+        out = S.persist_unit_evaluation(d, scenarios)
+        print(f"基准日 {d}｜价格册 {out['price_deck_id']}｜入库 {out['n_records']} 条｜trace_id={out['trace_id']}")
+        print(f"  {'单元':12s}{'情景':12s}{'合计':>12s}{'老井基础':>12s}{'措施增储':>11s}"
+              f"{'提采新井':>11s}{'扩边井':>11s}")
+        for r in out["summary"]:
+            c = r["components"]
+            print(f"  {r['unit_id']:12s}{r['scenario']:12s}{r['total_t']:>12,.0f}"
+                  f"{c['old_base']:>12,.0f}{c['measure']:>11,.0f}{c['new_infill']:>11,.0f}"
+                  f"{c['extension']:>11,.0f}")
 
 
 def cmd_ask(args) -> None:
@@ -212,6 +255,11 @@ def main(argv: Optional[list] = None) -> int:
     p.add_argument("well_code")
     p.add_argument("--as-of", default="2026-12-31")
     p.set_defaults(func=cmd_report)
+
+    p = sub.add_parser("unit-eval", help='SEC 单元"新-老-措"构成评估并写入历史评估成果表')
+    p.add_argument("--as-of", default=None, help="评估基准日，默认 conf 里的全部基准日")
+    p.add_argument("--scenario", default="all", choices=["all", "sec", "assessment", "impairment"])
+    p.set_defaults(func=cmd_unit_eval)
 
     p = sub.add_parser("serve", help="起 HTTP 服务")
     p.add_argument("--host", default="127.0.0.1")

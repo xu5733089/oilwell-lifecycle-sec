@@ -35,19 +35,36 @@ def _well_codes(n: int = 12) -> List[str]:
     return df["well_code_anon"].tolist() or ["GL-A-0001"]
 
 
+def _scopes() -> List[str]:
+    """单元级用例的评估对象：单元号、采油厂名称、公司名称混用，考槽位抽取的三种写法。"""
+    from ..api import services as S
+    try:
+        u = S.list_units()
+    except S.KernelError:
+        return []
+    plants = u["plants"]
+    return [plants[0]["units"][0]["unit_id"], plants[0]["plant_name"],
+            plants[-1]["units"][-1]["unit_id"], u["company"]["name"]]
+
+
 def run(target_n: int = 150, verbose: bool = False) -> Dict:
-    cases = build(_well_codes(), target_n=target_n)
+    cases = build(_well_codes(), target_n=target_n, scopes=_scopes())
     agent = Agent()
 
     rows: List[Dict] = []
     for c in cases:
         ans = agent.answer(c["question"])
-        got_tools = [t["tool"] for t in ans.tool_trace if t["status"] == "ok"]
+        # 工具链正确率衡量"有没有调对工具"。内核按业务规则拒绝（井不存在、峰后历史不足）
+        # 说明工具调对了、只是数据不支持结论，不算编排错误；参数错误、内部异常、越界仍算错。
+        got_tools = [t["tool"] for t in ans.tool_trace
+                     if t["status"] == "ok" or t.get("error_kind") == "kernel"]
         need = set(c["expected_tools"])
 
         slot_ok = None
         if c["well_code"]:
             slot_ok = ans.slots.get("values", {}).get("well_code") == c["well_code"]
+        elif c.get("scope"):
+            slot_ok = ans.slots.get("values", {}).get("scope") == c["scope"]
 
         rows.append(dict(
             id=c["id"], category=c["category"], question=c["question"],
