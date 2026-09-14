@@ -1,0 +1,16 @@
+# 核心依赖：内网离线环境可用 `pip download -d wheelhouse -r requirements.txt` 预打包
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+scikit-learn>=1.4          # HistGradientBoostingRegressor(loss="quantile")
+pyyaml>=6.0
+httpx>=0.24               # 大模型 OpenAI 兼容接口调用
+starlette>=0.36           # HTTP 层（可平替 fastapi，见 src/api/app.py 顶部说明）
+uvicorn>=0.23
+pydantic>=2.0
+matplotlib>=3.7           # 图件生成
+python-docx>=1.0          # 报告导出
+
+# 可选增强（装上会自动启用，装不上不影响主流程）
+# lightgbm>=4.0           # 替代 sklearn 分位数 GBDT，通常更快更准
+# shap>=0.44              # 替代 src/models/attribution.py 的消融归因

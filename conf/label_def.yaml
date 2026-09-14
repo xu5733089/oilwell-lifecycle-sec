@@ -1,0 +1,24 @@
+# 标签口径定义 —— 改动此文件必须同时改 version，历史标签按 version 并存
+# 对应方案 §3.3：这是最容易返工的地方，任何口径变更都可追溯、可重跑
+version: "v1"
+
+oil_break:                     # 见油时间
+  metric: "oil_t"
+  threshold: 0.5               # t/d
+  consecutive_days: 3
+  note: "自投产日起，日产油首次连续 N 天 >= threshold 的首日天数。
+         注水开发区块若业务口径为'见效时间'，需另建 version 并改 metric。"
+
+peak:                          # 达峰时间 / 达峰产量
+  smooth_window_days: 7        # 7 日滑动均值后取极值
+  min_days_after_start: 30     # 投产 30 天内的峰值不采信
+  confirm_decline_months: 2    # 峰后需连续 N 个月单调下降才确认
+  exclude_days_after_workover: 60   # 措施作业后 N 天内的峰值降权/剔除
+
+peak_pressure:                 # 达峰压力
+  source: "whp_mpa"            # whp_mpa | bhp_mpa —— 必须定死，混用会让误差毫无规律
+  note: "取达峰日对应压力；若该日缺失，取前后 3 日均值"
+
+eur:
+  method: "dca"                # 递减曲线外推至经济极限，见 src/reserves/dca.py
+  min_history_months: 12       # 历史不足 N 个月的井不产出 EUR 标签

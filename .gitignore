@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+wheelhouse/
+data/warehouse.db
+data/artifacts/
+data/synth_truth.csv
+data/raw/
+data/interim/
+data/processed/
+.DS_Store
+.idea/
+.vscode/

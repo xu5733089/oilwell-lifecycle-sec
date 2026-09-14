@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>油井全生命周期与 SEC 储量预评估平台</title>
+<style>
+/* ────────────────────────────────────────────────────────────────
+   零依赖：不引 Vue / ECharts / 任何 CDN。
+   内网装不了 npm 也连不了外网，图表全部手写 SVG。
+   配色经 CVD 校验（三色两两 ΔE ≥ 13，色盲可分辨）。
+   ──────────────────────────────────────────────────────────────── */
+:root{
+  --paper:#EEF1EE; --surface:#FCFCFB; --surface-2:#E7ECE8; --sunk:#E9EEEA;
+  --ink:#15211D; --ink-2:#3B4941; --muted:#6B7973; --rule:#CDD7D0; --rule-soft:#DFE6E1;
+  /* 分类色：validate_palette.js light 模式全项通过 */
+  --c1:#0E8F7F; --c2:#C25E12; --c3:#3B4FA8;
+  --c1-wash:#0E8F7F26; --c2-wash:#C25E1226;
+  --ok:#2C6B47; --warn:#8D6410; --crit:#96382C;
+  --ok-bg:#2C6B4718; --warn-bg:#8D641018; --crit-bg:#96382C18;
+  --shadow:0 1px 2px rgba(20,40,34,.05), 0 10px 26px -18px rgba(20,40,34,.3);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --paper:#0D1412; --surface:#151D1A; --surface-2:#1D2723; --sunk:#111917;
+  --ink:#E3EAE5; --ink-2:#B9C6BF; --muted:#87958E; --rule:#2C3934; --rule-soft:#233029;
+  /* dark 模式单独选步，不是自动翻转 */
+  --c1:#19A492; --c2:#D2731F; --c3:#5468C4;
+  --c1-wash:#19A49230; --c2-wash:#D2731F30;
+  --ok:#63BE88; --warn:#D3A74E; --crit:#E17E6F;
+  --ok-bg:#63BE8820; --warn-bg:#D3A74E20; --crit-bg:#E17E6F20;
+  --shadow:0 1px 2px rgba(0,0,0,.35), 0 12px 30px -20px rgba(0,0,0,.8);
+}}
+:root[data-theme="dark"]{
+  --paper:#0D1412; --surface:#151D1A; --surface-2:#1D2723; --sunk:#111917;
+  --ink:#E3EAE5; --ink-2:#B9C6BF; --muted:#87958E; --rule:#2C3934; --rule-soft:#233029;
+  --c1:#19A492; --c2:#D2731F; --c3:#5468C4;
+  --c1-wash:#19A49230; --c2-wash:#D2731F30;
+  --ok:#63BE88; --warn:#D3A74E; --crit:#E17E6F;
+  --ok-bg:#63BE8820; --warn-bg:#D3A74E20; --crit-bg:#E17E6F20;
+  --shadow:0 1px 2px rgba(0,0,0,.35), 0 12px 30px -20px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--paper); color:var(--ink); font-size:14px; line-height:1.6;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",
+              "Microsoft YaHei","Noto Sans SC",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+      font-variant-numeric:tabular-nums}
+
+/* ── 顶栏 ── */
+header{background:var(--surface);border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:20}
+.bar{max-width:1400px;margin:0 auto;padding:12px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.brand{font-weight:600;font-size:15.5px;letter-spacing:.01em;white-space:nowrap}
+.brand small{display:block;font-weight:400;font-size:11px;color:var(--muted);letter-spacing:.04em}
+.spacer{flex:1}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:2px 9px;border-radius:3px;
+      border:1px solid var(--rule);color:var(--muted);white-space:nowrap}
+.chip.warn{color:var(--warn);border-color:currentColor;background:var(--warn-bg)}
+.chip.ok{color:var(--ok);border-color:currentColor;background:var(--ok-bg)}
+.chip.crit{color:var(--crit);border-color:currentColor;background:var(--crit-bg)}
+.chip.solid{background:var(--sunk)}
+button.ghost{background:none;border:1px solid var(--rule);color:var(--ink-2);border-radius:3px;
+             padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+button.ghost:hover{border-color:var(--c1);color:var(--c1)}
+button.ghost:focus-visible{outline:2px solid var(--c1);outline-offset:1px}
+
+nav.tabs{max-width:1400px;margin:0 auto;padding:0 22px;display:flex;gap:2px;overflow-x:auto}
+nav.tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);
+  padding:9px 14px;font-size:13.5px;cursor:pointer;font-family:inherit;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--c1);border-bottom-color:var(--c1);font-weight:600}
+nav.tabs button:hover{color:var(--ink)}
+
+main{max-width:1400px;margin:0 auto;padding:22px}
+section[hidden]{display:none!important}
+
+/* ── 卡片与网格 ── */
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:16px 18px}
+.card h3{margin:0 0 3px;font-size:13.5px;font-weight:600}
+.card .sub{margin:0 0 14px;font-size:11.5px;color:var(--muted)}
+.card.plain{border:0;background:none;padding:0}
+
+/* KPI：数字是重点，才用大号 */
+.kpi{display:flex;flex-direction:column;gap:2px}
+.kpi .v{font-size:26px;font-weight:600;line-height:1.15;letter-spacing:-.01em}
+.kpi .k{font-size:11.5px;color:var(--muted)}
+.kpi .n{font-size:11.5px;color:var(--ink-2)}
+
+/* ── 表格 ── */
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:420px}
+th{text-align:left;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+   font-weight:500;padding:7px 10px;border-bottom:1px solid var(--rule);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ── 控件 ── */
+select,input[type=text]{background:var(--surface);color:var(--ink);border:1px solid var(--rule);
+  border-radius:3px;padding:5px 9px;font-size:13px;font-family:inherit;max-width:100%}
+select:focus,input:focus{outline:2px solid var(--c1);outline-offset:-1px;border-color:var(--c1)}
+.filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.filters label{font-size:12px;color:var(--muted)}
+button.primary{background:var(--c1);color:#fff;border:0;border-radius:3px;padding:6px 16px;
+  font-size:13px;cursor:pointer;font-family:inherit}
+button.primary:disabled{opacity:.5;cursor:default}
+
+/* ── 图表 ── */
+figure{margin:0}
+figure svg{display:block;width:100%;height:auto;overflow:visible}
+figcaption{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.55}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-bottom:8px}
+.legend i{display:inline-block;width:12px;height:2.5px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.legend i.band{height:9px;border-radius:2px;opacity:.5}
+.legend i.dash{background:none;border-top:2px dashed var(--muted);height:0}
+.tip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--rule);
+  border-radius:4px;padding:7px 10px;font-size:11.5px;box-shadow:var(--shadow);z-index:60;
+  opacity:0;transition:opacity .08s;max-width:260px}
+.tip b{font-weight:600}
+.tip .row{display:flex;gap:10px;justify-content:space-between}
+.tip .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px}
+
+/* ── 检查清单 / 诊断 ── */
+.chk{list-style:none;margin:0;padding:0}
+.chk li{display:grid;grid-template-columns:74px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule-soft);font-size:12.5px}
+.chk li:last-child{border-bottom:0}
+.chk .it{font-weight:600}
+.chk .ev{color:var(--ink-2);font-size:11.5px;margin-top:2px}
+.chk .ct{color:var(--muted);font-size:11px;margin-top:2px}
+.finding{border-left:2px solid var(--rule);padding:8px 0 8px 12px;margin-bottom:8px;font-size:12.5px}
+.finding.warn{border-left-color:var(--warn)}
+.finding.critical{border-left-color:var(--crit)}
+.finding.info{border-left-color:var(--ok)}
+.finding .act{color:var(--muted);font-size:11.5px;margin-top:3px}
+
+/* ── 对话 ── */
+.chatgrid{display:grid;grid-template-columns:1fr;gap:14px}
+@media(min-width:1100px){.chatgrid{grid-template-columns:minmax(0,1.35fr) minmax(320px,.95fr)}}
+.answer{white-space:pre-wrap;font-size:13px;line-height:1.72;background:var(--sunk);
+  border:1px solid var(--rule-soft);border-radius:4px;padding:14px 16px;max-height:520px;overflow:auto}
+.trace{display:flex;flex-direction:column;gap:0}
+.tstep{display:grid;grid-template-columns:20px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule-soft)}
+.tstep:last-child{border-bottom:0}
+.tdot{width:9px;height:9px;border-radius:50%;background:var(--c1);margin-top:5px}
+.tstep.failed .tdot,.tstep.denied .tdot{background:var(--crit)}
+.tname{font-size:12.5px;font-weight:600}
+.targs{font-size:11px;color:var(--muted);word-break:break-all}
+.terr{font-size:11.5px;color:var(--crit)}
+.examples{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.examples button{background:var(--sunk);border:1px solid var(--rule-soft);color:var(--ink-2);
+  border-radius:12px;padding:3px 11px;font-size:11.5px;cursor:pointer;font-family:inherit}
+.examples button:hover{border-color:var(--c1);color:var(--c1)}
+
+.empty{color:var(--muted);font-size:12.5px;padding:22px 0;text-align:center}
+.err{color:var(--crit);font-size:12.5px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand">油井全生命周期与 SEC 储量预评估平台
+      <small>大庆油田"人工智能+"青年创新比赛 · 勘探开发研究院</small></div>
+    <div class="spacer"></div>
+    <span class="chip warn" id="dsBadge" hidden></span>
+    <span class="chip solid mono" id="mvBadge">—</span>
+    <button class="ghost" id="themeBtn" type="button">深色</button>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="overview" aria-selected="true">总览</button>
+    <button role="tab" data-tab="well" aria-selected="false">单井工作台</button>
+    <button role="tab" data-tab="reserves" aria-selected="false">储量与 SEC</button>
+    <button role="tab" data-tab="chat" aria-selected="false">智能体对话</button>
+    <button role="tab" data-tab="eval" aria-selected="false">评测</button>
+  </nav>
+</header>
+
+<main>
+  <section id="tab-overview"></section>
+  <section id="tab-well" hidden></section>
+  <section id="tab-reserves" hidden></section>
+  <section id="tab-chat" hidden></section>
+  <section id="tab-eval" hidden></section>
+</main>
+
+<div class="tip" id="tip"></div>
+
+<script>
+'use strict';
+/* ══════════════════════════════════════════════════════════════
+   1. 基础工具
+   ══════════════════════════════════════════════════════════════ */
+const $ = (s, r) => (r || document).querySelector(s);
+const el = (tag, attrs = {}, kids = []) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'class') n.className = v;
+    else if (k === 'html') n.innerHTML = v;
+    else if (k === 'text') n.textContent = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v);
+  }
+  (Array.isArray(kids) ? kids : [kids]).forEach(c => {
+    if (c === null || c === undefined) return;
+    n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  });
+  return n;
+};
+const fmt = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v))
+  ? '—' : Number(v).toLocaleString('zh-CN', { maximumFractionDigits: d });
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+async function api(path, params) {
+  const q = params ? '?' + new URLSearchParams(params) : '';
+  const r = await fetch('/api/v1' + path + q);
+  const j = await r.json().catch(() => ({ error: '响应不是合法 JSON' }));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   2. 手写 SVG 图表
+   规矩：单一坐标轴（绝不双轴）、细笔画、网格退到背景、
+   文字用文本色不用系列色、每张图都有 hover 层。
+   ══════════════════════════════════════════════════════════════ */
+const NS = 'http://www.w3.org/2000/svg';
+const s_ = (tag, attrs = {}) => {
+  const n = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs))
+    if (v !== null && v !== undefined) n.setAttribute(k, v);
+  return n;
+};
+const tip = $('#tip');
+function showTip(evt, html) {
+  tip.innerHTML = html;
+  tip.style.opacity = '1';
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  if (x + w > innerWidth - 8) x = evt.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = evt.clientY - h - pad;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+const hideTip = () => { tip.style.opacity = '0'; };
+
+function niceTicks(lo, hi, n = 5) {
+  if (!(hi > lo)) return [lo];
+  const raw = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+
+function frame(w, h, pad) {
+  const svg = s_('svg', { viewBox: `0 0 ${w} ${h}`, role: 'img' });
+  const g = { svg, w, h, pad, iw: w - pad.l - pad.r, ih: h - pad.t - pad.b };
+  return g;
+}
+function axes(g, xd, yd, xLabel, yLabel, xFmt) {
+  const { svg, pad, iw, ih } = g;
+  const X = v => pad.l + (v - xd[0]) / (xd[1] - xd[0] || 1) * iw;
+  const Y = v => pad.t + ih - (v - yd[0]) / (yd[1] - yd[0] || 1) * ih;
+  const grid = cssVar('--rule-soft'), muted = cssVar('--muted');
+  niceTicks(yd[0], yd[1]).forEach(t => {
+    svg.appendChild(s_('line', { x1: pad.l, x2: pad.l + iw, y1: Y(t), y2: Y(t), stroke: grid, 'stroke-width': 1 }));
+    const tx = s_('text', { x: pad.l - 7, y: Y(t) + 3.5, 'text-anchor': 'end', fill: muted, 'font-size': 10 });
+    tx.textContent = fmt(t, 2); svg.appendChild(tx);
+  });
+  niceTicks(xd[0], xd[1]).forEach(t => {
+    const tx = s_('text', { x: X(t), y: pad.t + ih + 15, 'text-anchor': 'middle', fill: muted, 'font-size': 10 });
+    tx.textContent = xFmt ? xFmt(t) : fmt(t, 0); svg.appendChild(tx);
+  });
+  svg.appendChild(s_('line', { x1: pad.l, x2: pad.l + iw, y1: pad.t + ih, y2: pad.t + ih, stroke: cssVar('--rule'), 'stroke-width': 1 }));
+  if (xLabel) { const t = s_('text', { x: pad.l + iw / 2, y: g.h - 3, 'text-anchor': 'middle', fill: muted, 'font-size': 10 }); t.textContent = xLabel; svg.appendChild(t); }
+  if (yLabel) { const t = s_('text', { x: 11, y: pad.t + ih / 2, 'text-anchor': 'middle', fill: muted, 'font-size': 10, transform: `rotate(-90 11 ${pad.t + ih / 2})` }); t.textContent = yLabel; svg.appendChild(t); }
+  return { X, Y };
+}
+
+/* 折线 + 不确定性带。单一 y 轴：压力另起一张小图，绝不做双轴。 */
+function lineChart(host, cfg) {
+  host.innerHTML = '';
+  const g = frame(760, 300, { l: 46, r: 16, t: 14, b: 34 });
+  const all = [];
+  cfg.series.forEach(s => s.points.forEach(p => all.push(p.y)));
+  (cfg.band || []).forEach(p => { all.push(p.lo); all.push(p.hi); });
+  if (cfg.hline) all.push(cfg.hline.y);
+  const ymax = Math.max(...all.filter(Number.isFinite)) * 1.12 || 1;
+  const xs = cfg.series.flatMap(s => s.points.map(p => p.x)).concat((cfg.band || []).map(p => p.x));
+  const xd = [Math.min(...xs), Math.max(...xs)], yd = [0, ymax];
+  const { X, Y } = axes(g, xd, yd, cfg.xLabel, cfg.yLabel);
+  const { svg } = g;
+
+  if (cfg.band && cfg.band.length) {
+    const up = cfg.band.map(p => `${X(p.x)},${Y(p.hi)}`).join(' ');
+    const dn = cfg.band.slice().reverse().map(p => `${X(p.x)},${Y(p.lo)}`).join(' ');
+    svg.appendChild(s_('polygon', { points: up + ' ' + dn, fill: cfg.bandColor || cssVar('--c1'), 'fill-opacity': .16 }));
+  }
+  if (cfg.hline) {
+    const y = Y(cfg.hline.y);
+    svg.appendChild(s_('line', { x1: g.pad.l, x2: g.pad.l + g.iw, y1: y, y2: y, stroke: cssVar('--muted'), 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }));
+    const t = s_('text', { x: g.pad.l + g.iw, y: y - 5, 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': 10.5 });
+    t.textContent = cfg.hline.label; svg.appendChild(t);
+  }
+  if (cfg.vline) {
+    const x = X(cfg.vline.x);
+    svg.appendChild(s_('line', { x1: x, x2: x, y1: g.pad.t, y2: g.pad.t + g.ih, stroke: cssVar('--rule'), 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
+    const t = s_('text', { x: x + 4, y: g.pad.t + 10, fill: cssVar('--muted'), 'font-size': 10 });
+    t.textContent = cfg.vline.label; svg.appendChild(t);
+  }
+  cfg.series.forEach(s => {
+    const pts = s.points.filter(p => Number.isFinite(p.y));
+    if (!pts.length) return;
+    svg.appendChild(s_('polyline', {
+      points: pts.map(p => `${X(p.x)},${Y(p.y)}`).join(' '), fill: 'none',
+      stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      'stroke-dasharray': s.dashed ? '6 4' : null
+    }));
+    if (s.dots) pts.forEach(p => svg.appendChild(s_('circle', {
+      cx: X(p.x), cy: Y(p.y), r: 3.2, fill: s.color, stroke: cssVar('--surface'), 'stroke-width': 1.5
+    })));
+  });
+  (cfg.markers || []).forEach(m => {
+    svg.appendChild(s_('circle', { cx: X(m.x), cy: Y(m.y), r: 5, fill: 'none', stroke: m.color, 'stroke-width': 2 }));
+    const t = s_('text', { x: X(m.x) + 9, y: Y(m.y) - 7, fill: cssVar('--ink-2'), 'font-size': 10.5 });
+    t.textContent = m.label; svg.appendChild(t);
+  });
+
+  /* hover：十字准星 + 就近取值 */
+  const cross = s_('line', { y1: g.pad.t, y2: g.pad.t + g.ih, stroke: cssVar('--rule'), 'stroke-width': 1, opacity: 0 });
+  svg.appendChild(cross);
+  const hit = s_('rect', { x: g.pad.l, y: g.pad.t, width: g.iw, height: g.ih, fill: 'transparent' });
+  svg.appendChild(hit);
+  hit.addEventListener('mousemove', ev => {
+    const r = svg.getBoundingClientRect();
+    const xv = xd[0] + (ev.clientX - r.left) / r.width * 760 - g.pad.l >= 0
+      ? xd[0] + ((ev.clientX - r.left) / r.width * 760 - g.pad.l) / g.iw * (xd[1] - xd[0]) : xd[0];
+    cross.setAttribute('x1', X(xv)); cross.setAttribute('x2', X(xv)); cross.setAttribute('opacity', 1);
+    let html = `<b>${cfg.xLabel || 'x'} ${fmt(xv, 0)}</b>`;
+    cfg.series.forEach(s => {
+      const p = s.points.reduce((a, b) => Math.abs(b.x - xv) < Math.abs(a.x - xv) ? b : a, s.points[0]);
+      if (p && Number.isFinite(p.y))
+        html += `<div class="row"><span><i class="sw" style="background:${s.color}"></i>${s.name}</span><span class="mono">${fmt(p.y)}</span></div>`;
+    });
+    if (cfg.band && cfg.band.length) {
+      const p = cfg.band.reduce((a, b) => Math.abs(b.x - xv) < Math.abs(a.x - xv) ? b : a, cfg.band[0]);
+      html += `<div class="row"><span>P10–P90</span><span class="mono">${fmt(p.lo)} ~ ${fmt(p.hi)}</span></div>`;
+    }
+    showTip(ev, html);
+  });
+  hit.addEventListener('mouseleave', () => { cross.setAttribute('opacity', 0); hideTip(); });
+  host.appendChild(g.svg);
+}
+
+/* 发散条形图：正负两极用冷暖两色 + 零点中性轴 */
+function divergingBars(host, rows, unit) {
+  host.innerHTML = '';
+  const rowH = 26, h = rows.length * rowH + 26, w = 760, labelW = 190;
+  const svg = s_('svg', { viewBox: `0 0 ${w} ${h}`, role: 'img' });
+  const max = Math.max(...rows.map(r => Math.abs(r.value))) || 1;
+  const zero = labelW + (w - labelW - 70) / 2, half = (w - labelW - 70) / 2;
+  svg.appendChild(s_('line', { x1: zero, x2: zero, y1: 4, y2: h - 22, stroke: cssVar('--rule'), 'stroke-width': 1 }));
+  rows.forEach((r, i) => {
+    const y = i * rowH + 6, bw = Math.abs(r.value) / max * half * .92;
+    const pos = r.value >= 0, color = pos ? cssVar('--c1') : cssVar('--c2');
+    const x = pos ? zero : zero - bw;
+    const rect = s_('rect', { x, y: y + 4, width: Math.max(bw, 1.5), height: 13, fill: color, rx: 3 });
+    svg.appendChild(rect);
+    const lt = s_('text', { x: labelW - 10, y: y + 14.5, 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': 11.5 });
+    lt.textContent = r.label; svg.appendChild(lt);
+    const vt = s_('text', { x: pos ? x + bw + 7 : x - 7, y: y + 14.5, 'text-anchor': pos ? 'start' : 'end', fill: cssVar('--muted'), 'font-size': 10.5 });
+    vt.textContent = (r.value > 0 ? '+' : '') + fmt(r.value, 2); svg.appendChild(vt);
+    rect.addEventListener('mousemove', ev => showTip(ev,
+      `<b>${r.label}</b><div class="row"><span>该井取值</span><span class="mono">${fmt(r.raw)}</span></div>` +
+      `<div class="row"><span>对预测的推动</span><span class="mono">${(r.value > 0 ? '+' : '') + fmt(r.value)} ${unit || ''}</span></div>`));
+    rect.addEventListener('mouseleave', hideTip);
+  });
+  const lab = s_('text', { x: zero, y: h - 6, 'text-anchor': 'middle', fill: cssVar('--muted'), 'font-size': 10 });
+  lab.textContent = `← 拉低    对预测的推动（${unit || ''}）    抬高 →`; svg.appendChild(lab);
+  host.appendChild(svg);
+}
+
+/* 直方图：单一色相，P10/P50/P90 用参考线标注 */
+function histogram(host, values, refs, xLabel) {
+  host.innerHTML = '';
+  const g = frame(760, 240, { l: 46, r: 16, t: 14, b: 34 });
+  const lo = Math.min(...values), hi = Math.max(...values), nb = 26;
+  const step = (hi - lo) / nb || 1;
+  const bins = new Array(nb).fill(0);
+  values.forEach(v => bins[Math.min(nb - 1, Math.floor((v - lo) / step))]++);
+  const ymax = Math.max(...bins) * 1.12 || 1;
+  const { X, Y } = axes(g, [lo, hi], [0, ymax], xLabel, '样本数',
+    t => Math.abs(t) >= 1e4 ? (t / 1e4).toFixed(1) + '万' : fmt(t, 0));
+  const { svg } = g;
+  bins.forEach((c, i) => {
+    const x0 = X(lo + i * step), x1 = X(lo + (i + 1) * step);
+    const bw = Math.max(x1 - x0 - 2, 1);   /* 2px 间隙，别让柱子糊成一片 */
+    const r = s_('rect', { x: x0 + 1, y: Y(c), width: bw, height: Math.max(g.pad.t + g.ih - Y(c), 0), fill: cssVar('--c1'), 'fill-opacity': .8, rx: 2 });
+    svg.appendChild(r);
+    r.addEventListener('mousemove', ev => showTip(ev,
+      `<b>${fmt(lo + i * step, 0)} ~ ${fmt(lo + (i + 1) * step, 0)}</b>` +
+      `<div class="row"><span>样本数</span><span class="mono">${c}</span></div>`));
+    r.addEventListener('mouseleave', hideTip);
+  });
+  (refs || []).forEach(r => {
+    if (!Number.isFinite(r.x)) return;
+    svg.appendChild(s_('line', { x1: X(r.x), x2: X(r.x), y1: g.pad.t, y2: g.pad.t + g.ih, stroke: cssVar('--c2'), 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }));
+    const t = s_('text', { x: X(r.x), y: g.pad.t - 2, 'text-anchor': 'middle', fill: cssVar('--ink-2'), 'font-size': 10.5 });
+    t.textContent = r.label; svg.appendChild(t);
+  });
+  host.appendChild(svg);
+}
+
+/* 井位散点：颜色=区块（分类），大小=累产（量级） */
+function scatter(host, pts, colorKey, colors, onPick) {
+  host.innerHTML = '';
+  const g = frame(760, 340, { l: 46, r: 16, t: 14, b: 34 });
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const pad = v => (Math.max(...v) - Math.min(...v)) * .06 || 1;
+  const { X, Y } = axes(g, [Math.min(...xs) - pad(xs), Math.max(...xs) + pad(xs)],
+    [Math.min(...ys) - pad(ys), Math.max(...ys) + pad(ys)],
+    '相对东西向 (m，坐标已偏移)', '相对南北向 (m)', t => fmt(t / 1000, 1) + 'k');
+  const cmax = Math.max(...pts.map(p => p.size || 0)) || 1;
+  pts.forEach(p => {
+    const r = 3 + Math.sqrt((p.size || 0) / cmax) * 7;
+    const c = colors[p[colorKey]] || cssVar('--muted');
+    const n = s_('circle', {
+      cx: X(p.x), cy: Y(p.y), r, fill: c, 'fill-opacity': p.is_new ? .95 : .5,
+      stroke: p.is_new ? cssVar('--ink') : cssVar('--surface'), 'stroke-width': p.is_new ? 1.4 : 1,
+      style: 'cursor:pointer'
+    });
+    n.addEventListener('mousemove', ev => showTip(ev,
+      `<b>${p.well_code}</b>　<span class="mono">${p.block} ${p.layer}</span>` +
+      `<div class="row"><span>投产</span><span class="mono">${p.first_prod_date}</span></div>` +
+      `<div class="row"><span>累产油</span><span class="mono">${fmt(p.cum_oil_t, 0)} t</span></div>` +
+      `<div class="row"><span>生产历史</span><span class="mono">${p.history_days} d</span></div>` +
+      (p.is_new ? '<div style="margin-top:4px;color:var(--c2)">新井 · 尚未走完生命周期</div>' : '')));
+    n.addEventListener('mouseleave', hideTip);
+    n.addEventListener('click', () => onPick && onPick(p.well_code));
+    g.svg.appendChild(n);
+  });
+  host.appendChild(g.svg);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   3. 通用片段
+   ══════════════════════════════════════════════════════════════ */
+const STATUS_CN = { pass: '通过', fail: '不通过', needs_human: '需人工确认' };
+const STATUS_CLS = { pass: 'ok', fail: 'crit', needs_human: 'warn' };
+const TARGET_CN = { t_oil_break: '见油时间', t_peak: '达峰时间', q_peak: '达峰产量', p_peak: '达峰压力', eur: 'EUR' };
+
+const card = (title, sub, body) => el('div', { class: 'card' },
+  [el('h3', { text: title }), sub ? el('p', { class: 'sub', text: sub }) : null,
+  ...(Array.isArray(body) ? body : [body])].filter(Boolean));
+
+const kpi = (label, value, note) => el('div', { class: 'card' },
+  el('div', { class: 'kpi' }, [
+    el('span', { class: 'k', text: label }),
+    el('span', { class: 'v mono', text: value }),
+    note ? el('span', { class: 'n', text: note }) : null].filter(Boolean)));
+
+function table(cols, rows) {
+  const t = el('table', {}, [
+    el('thead', {}, el('tr', {}, cols.map(c => el('th', { class: c.num ? 'num' : '', text: c.h })))),
+    el('tbody', {}, rows.map(r => el('tr', {}, cols.map(c => {
+      const v = r[c.k];
+      if (c.render) return el('td', { class: c.num ? 'num' : '' }, c.render(r));
+      return el('td', { class: c.num ? 'num' : '', text: v === null || v === undefined ? '—' : (c.num ? fmt(v, c.d ?? 2) : String(v)) });
+    }))))]);
+  return el('div', { class: 'tw' }, t);
+}
+
+const legend = items => el('div', { class: 'legend' }, items.map(i =>
+  el('span', {}, [el('i', { class: i.kind || '', style: i.color ? `background:${i.color}` : '' }), i.name])));
+
+/* ══════════════════════════════════════════════════════════════
+   4. 各页面
+   ══════════════════════════════════════════════════════════════ */
+const S = { wells: [], overview: null, current: null };
+const BLOCK_COLORS = () => ({ 'GL-A': cssVar('--c1'), 'GL-B': cssVar('--c2'), 'SB-C': cssVar('--c3') });
+
+async function renderOverview() {
+  const host = $('#tab-overview'); host.innerHTML = '<p class="empty">加载中…</p>';
+  const [ov, wl] = await Promise.all([api('/overview'), api('/wells', { limit: 400 })]);
+  S.overview = ov; S.wells = wl.wells;
+  $('#mvBadge').textContent = ov.model.model_version;
+  if (ov.data_source !== 'REAL') {
+    const b = $('#dsBadge'); b.hidden = false;
+    b.textContent = `模拟数据（data_source=${ov.data_source}）`;
+  }
+  host.innerHTML = '';
+
+  host.appendChild(el('div', { class: 'grid g3', style: 'margin-bottom:14px' }, [
+    kpi('井数', fmt(ov.data.n_wells, 0), `${ov.data.blocks.join(' · ')}｜其中新井 ${ov.data.n_new_wells} 口`),
+    kpi('累产油', fmt(ov.data.cum_oil_t / 1e4, 1) + ' 万 t', `${fmt(ov.data.n_wells_with_prod, 0)} 口井有生产记录`),
+    kpi('可用标签井', fmt(ov.data.n_labeled, 0), `质量门禁通过率 ${fmt(ov.quality.pass_rate * 100, 1)}%`),
+    kpi('训练/校准/测试', `${ov.model.n_train}/${ov.model.n_calib}/${ov.model.n_test}`,
+      `切分方式：${ov.model.split_method === 'time' ? '按投产年份时间外推' : ov.model.split_method}`)]));
+
+  const mapCard = card('井位分布', '颜色=区块，大小=累产，实心描边=投产不足 420 天的新井。点击选井。', el('figure'));
+  const fig = $('figure', mapCard);
+  fig.appendChild(el('div', { class: 'legend' }, Object.entries(BLOCK_COLORS()).map(([b, c]) =>
+    el('span', {}, [el('i', { style: `background:${c};height:9px;border-radius:50%;width:9px` }), b]))));
+  const plot = el('div'); fig.appendChild(plot);
+  fig.appendChild(el('figcaption', { text: '坐标已统一偏移，不可反推真实井位。' }));
+  scatter(plot, S.wells, 'block', BLOCK_COLORS(), code => { pickWell(code); switchTab('well'); });
+
+  const rep = ov.report || {};
+  const rows = Object.entries(rep).map(([k, r]) => ({
+    target: TARGET_CN[k] || k, mae: r.model.mae, base: r.baseline.mae,
+    gain: r.mae_gain_vs_baseline_pct, cov: r.model.coverage, cov0: r.model_uncalibrated.coverage
+  }));
+  const metricCard = card('算法层指标', '回测集为已走完主要生产周期的老井；基线 = 邻井类比 + Arps 外推。',
+    table([{ h: '目标', k: 'target' }, { h: '模型 MAE', k: 'mae', num: true },
+    { h: '基线 MAE', k: 'base', num: true },
+    { h: '相对基线', k: 'gain', num: true, render: r => el('span', { class: 'chip ok', text: (r.gain ?? 0) + '%' }) },
+    { h: '区间覆盖率', k: 'cov', num: true },
+    { h: '校准前', k: 'cov0', num: true }], rows));
+  metricCard.appendChild(el('p', { class: 'sub', style: 'margin:10px 0 0',
+    text: '"校准前"一列是保形校准的价值：名义 80% 的区间，校准前实际只覆盖四到五成。' }));
+
+  const qRows = Object.entries(ov.quality.top_reasons || {}).map(([k, v]) => ({ reason: k, n: v }));
+  const qCard = card('数据质量门禁',
+    `${ov.quality.n_passed}/${ov.quality.n_wells} 口井通过；未通过的进隔离区，不进训练集。`,
+    qRows.length ? table([{ h: '未通过原因', k: 'reason' }, { h: '井数', k: 'n', num: true, d: 0 }], qRows)
+      : el('p', { class: 'empty', text: '全部通过' }));
+
+  host.appendChild(el('div', { class: 'grid', style: 'margin-bottom:14px' }, mapCard));
+  host.appendChild(el('div', { class: 'grid g2' }, [metricCard, qCard]));
+}
+
+/* ── 单井工作台 ── */
+function wellPicker(onChange) {
+  const sel = el('select', { onchange: e => onChange(e.target.value) },
+    S.wells.map(w => el('option', {
+      value: w.well_code,
+      text: `${w.well_code}　${w.block}/${w.layer}　${w.is_new ? '新井' : '老井'}　${w.history_days}d`
+    })));
+  if (S.current) sel.value = S.current;
+  return sel;
+}
+
+async function renderWell() {
+  const host = $('#tab-well');
+  if (!S.wells.length) { host.innerHTML = '<p class="empty">请先打开总览页加载井表</p>'; return; }
+  if (!S.current) S.current = S.wells[0].well_code;
+  host.innerHTML = '';
+  host.appendChild(el('div', { class: 'filters' }, [
+    el('label', { text: '选择井' }), wellPicker(c => { S.current = c; renderWell(); }),
+    el('span', { class: 'chip solid', id: 'wellMeta', text: '加载中…' })]));
+  const body = el('div'); host.appendChild(body);
+  body.innerHTML = '<p class="empty">计算中…（首次访问需拟合递减曲线，约 1 秒）</p>';
+
+  let pred, curve, analogs, info;
+  try {
+    [info, curve, pred, analogs] = await Promise.all([
+      api('/well/query', { well_code: S.current }),
+      api('/well/curve', { well_code: S.current }),
+      api('/predict/lifecycle', { well_code: S.current }),
+      api('/analogs', { well_code: S.current, top_k: 5 })]);
+  } catch (e) { body.innerHTML = ''; body.appendChild(el('p', { class: 'err', text: '失败：' + e.message })); return; }
+
+  $('#wellMeta').textContent = `${info.block}/${info.layer}｜${info.well_type}｜投产 ${info.first_prod_date}｜` +
+    `累产 ${fmt(info.cum_oil_t, 0)} t｜近 ${info.rate_window_days} 天 ${fmt(info.current_rate_t_per_d)} t/d`;
+  body.innerHTML = '';
+
+  /* 预测卡：区间是主角，不给单点 */
+  const pr = pred.results;
+  body.appendChild(el('div', { class: 'grid g3', style: 'margin-bottom:14px' },
+    Object.entries(pr).map(([k, v]) => el('div', { class: 'card' }, el('div', { class: 'kpi' }, [
+      el('span', { class: 'k', text: TARGET_CN[k] || k }),
+      el('span', { class: 'v mono', text: fmt(v.p50) + ' ' + v.unit }),
+      el('span', { class: 'n mono', text: `P10–P90  ${fmt(v.p10)} ~ ${fmt(v.p90)}` })])))));
+
+  /* 主图：实测 + 预测 + 概率带。压力单开一张，绝不双轴。 */
+  const c1 = cssVar('--c1'), c2 = cssVar('--c2');
+  const obs = curve.month.map((m, i) => ({ x: m, y: curve.oil_t_per_d[i] }));
+  const cv = pred.curve;
+  const ratio = { lo: pr.eur ? pr.eur.p10 / pr.eur.p50 : .8, hi: pr.eur ? pr.eur.p90 / pr.eur.p50 : 1.2 };
+  const dca0 = await api('/reserves/dca', { well_code: S.current }).catch(() => null);
+  /* x 轴裁到经济极限之后一点：后面几十个月的平尾巴只会把有信息的前段压扁 */
+  /* 优先裁到经济极限；新井拿不到经济极限（DCA 不适用），
+     就退回用曲线自身：降到峰值 8% 以下就没有信息量了。 */
+  let cut = cv ? cv.month.length : 0;
+  if (cv && cv.q.length) {
+    const qEcon = dca0 ? dca0.economics.q_econ_t_per_d : Math.max(...cv.q) * 0.08;
+    const k = cv.q.findIndex(v => v < qEcon);
+    if (k > 4) cut = Math.min(cv.month.length, Math.round(k * 1.15));
+  }
+  const p50 = cv ? cv.month.slice(0, cut).map((m, i) => ({ x: m, y: cv.q[i] })) : [];
+  const band = cv ? cv.month.slice(0, cut).map((m, i) => ({ x: m, lo: cv.q[i] * ratio.lo, hi: cv.q[i] * ratio.hi })) : [];
+  const obsEnd = Math.max(...curve.month, 1);
+
+  const chart = el('figure');
+  chart.appendChild(legend([
+    { name: '实测月均日产', color: c2 }, { name: '预测 P50', color: c1 },
+    { name: 'P10–P90 区间', color: c1, kind: 'band' }, { name: '经济极限', kind: 'dash' }]));
+  const plot = el('div'); chart.appendChild(plot);
+  chart.appendChild(el('figcaption', {
+    text: `预测曲线由预测出的达峰产量、达峰时间与 EUR 反推（Di=${cv ? cv.di : '—'}，b=${cv ? cv.b : '—'}），` +
+      `与三个标量预测自洽；概率带按 EUR 区间等比缩放。` +
+      (dca0 ? '经济极限线以 12 个月首日均价口径计算。' : '该井尚未达峰，递减分析不适用，故不画经济极限线。') +
+      ' 横轴已裁到经济极限附近。'
+  }));
+  lineChart(plot, {
+    xLabel: '投产后月份', yLabel: '日产油 t/d',
+    series: [{ name: '实测', color: c2, points: obs, dots: obs.length < 40 },
+    { name: '预测 P50', color: c1, points: p50, dashed: true }],
+    band, bandColor: c1,
+    hline: dca0 ? { y: dca0.economics.q_econ_t_per_d, label: `经济极限 ${dca0.economics.q_econ_t_per_d} t/d` } : null,
+    vline: { x: obsEnd, label: '← 实测 / 预测 →' },
+    markers: pr.t_peak ? [{ x: pr.t_peak.p50 / 30.4, y: pr.q_peak.p50, color: c2, label: `达峰 P50 ${fmt(pr.t_peak.p50, 0)} d` }] : []
+  });
+  body.appendChild(card('全生命周期预测', `观测窗 ${pred.obs_days} 天｜模型 ${pred.model_version}`, chart));
+
+  /* 归因 + 类比井 */
+  const attrHost = el('figure');
+  divergingBars(attrHost, pred.explain.top_features.map(f => ({
+    label: f.feature, value: f.contrib, raw: f.value
+  })), 'd');
+  const attrCard = card('特征归因（对达峰时间）', pred.explain.method + '：把该特征换成训练集中位数，看预测怎么变。', attrHost);
+
+  const anCard = card('类比井', analogs.method,
+    table([{ h: '井号', k: 'well_code' }, { h: '相似度', k: 'similarity', num: true },
+    { h: '实际达峰 (d)', k: 't_peak_actual', num: true, d: 0 },
+    { h: '峰值 (t/d)', k: 'q_peak_actual', num: true },
+    { h: 'EUR (t)', k: 'eur_actual', num: true, d: 0 }], analogs.analogs));
+  body.appendChild(el('div', { class: 'grid g2', style: 'margin-top:14px' }, [attrCard, anCard]));
+
+  if (curve.actual && curve.actual.t_peak && curve.actual.label_quality === 'ok') {
+    body.appendChild(card('该井的实际标签（仅老井有）',
+      `标签口径版本 ${pred.label_def_version}｜质量位 ${curve.actual.label_quality}｜可用于与预测值比对`,
+      table([{ h: '指标', k: 'k' }, { h: '实际值', k: 'v', num: true }], [
+        { k: '达峰时间 (d)', v: curve.actual.t_peak }, { k: '达峰产量 (t/d)', v: curve.actual.q_peak },
+        { k: '达峰压力 (MPa)', v: curve.actual.p_peak }, { k: 'EUR (t)', v: curve.actual.eur }])));
+  } else if (curve.actual) {
+    body.appendChild(card('该井暂无可信实际标签',
+      `质量位 ${curve.actual.label_quality || '—'}`,
+      el('p', { class: 'sub', style: 'margin:0',
+        text: '该井尚未确认达峰（峰后下降未持续足够长时间），因此不展示"实际达峰"值 —— ' +
+              '把还没到的峰当成真值展示，会让预测看起来是错的，而错的是标签。' })));
+  }
+}
+
+/* ── 储量与 SEC ── */
+async function renderReserves() {
+  const host = $('#tab-reserves');
+  if (!S.wells.length) { host.innerHTML = '<p class="empty">请先打开总览页加载井表</p>'; return; }
+  if (!S.current) S.current = S.wells[0].well_code;
+  host.innerHTML = '';
+  host.appendChild(el('div', { class: 'filters' }, [
+    el('label', { text: '选择井' }), wellPicker(c => { S.current = c; renderReserves(); })]));
+  const body = el('div'); host.appendChild(body);
+  body.innerHTML = '<p class="empty">计算中…</p>';
+
+  /* 逐个容错：新井做不了递减分析是正常业务状态，不该让整页报错 */
+  const soft = p => p.catch(e => ({ _error: e.message }));
+  const [dca, vol, cc, sec] = await Promise.all([
+    soft(api('/reserves/dca', { well_code: S.current })),
+    soft(api('/reserves/volumetric', { well_code: S.current })),
+    soft(api('/reserves/crosscheck', { well_code: S.current })),
+    soft(api('/sec/screen', { well_code: S.current }))]);
+  body.innerHTML = '';
+
+  if (dca._error) {
+    body.appendChild(el('div', { class: 'card', style: 'margin-bottom:14px;border-color:var(--warn)' }, [
+      el('h3', { text: '递减分析不适用' }),
+      el('p', { class: 'sub', style: 'margin:0', text: dca._error }),
+      el('p', { class: 'sub', style: 'margin:8px 0 0',
+        text: '这是正确行为：递减分析的前提是已过峰，把上升段当递减段拟合会外推出荒谬的 EUR。' +
+              '该井的储量区间请看"单井工作台"里模型给出的 EUR 预测。' })]));
+  }
+
+  body.appendChild(el('div', { class: 'grid g3', style: 'margin-bottom:14px' }, [
+    kpi('EUR P50', dca._error ? '不可得' : fmt(dca.eur.p50, 0) + ' t',
+      dca._error ? '需峰后 180 天历史' : `P10–P90 ${fmt(dca.eur.p10, 0)} ~ ${fmt(dca.eur.p90, 0)}`),
+    kpi('已累产', dca._error ? '—' : fmt(dca.cum_to_date_t, 0) + ' t',
+      dca._error ? '' : `剩余可采 P50 ${fmt(dca.remaining_t.p50, 0)} t`),
+    kpi('SEC 类别', sec._error ? '—' : sec.category, sec._error ? sec._error : sec.category_rationale),
+    kpi('已证实储量',
+      (sec._error || sec.proved_reserves_t === null) ? '不可得' : fmt(sec.proved_reserves_t, 0) + ' t',
+      sec._error ? '' : sec.basis)]));
+
+  const dcaCard = dca._error ? card('递减曲线分析', '不适用', el('p', { class: 'sub', style: 'margin:0', text: dca._error }))
+    : card('递减曲线分析',
+    `${dca.fit.model}｜b=${dca.fit.b}｜Di=${dca.fit.di_per_month}/月｜终端递减=${dca.fit.d_min_per_month}/月｜R²=${dca.fit.r2}`,
+    [table([{ h: '项', k: 'k' }, { h: '值', k: 'v' }], [
+      { k: '经济极限产量', v: dca.economics.q_econ_t_per_d + ' t/d' },
+      { k: '到达经济极限', v: '第 ' + fmt(dca.economics.t_econ_month, 0) + ' 个月' },
+      { k: '12 个月首日均价', v: dca.economics.avg_12m_price_usd_bbl + ' USD/bbl' },
+      { k: '价格册', v: dca.economics.price_deck_id },
+      { k: '自助法次数', v: dca.eur.n_bootstrap + ' 次（移动块）' }].concat(
+        dca.economics.t_econ_capped ? [{ k: '注意', v: dca.economics.t_econ_note }] : [])),
+    el('p', { class: 'sub', style: 'margin:10px 0 0', text: dca.guard })]);
+
+  /* 蒙特卡洛：用返回的分位数重建一个对数正态样本用于展示形状，
+     参考线才是真值 —— 这一点写在图注里，不能让人误以为是原始样本。 */
+  const o = vol._error ? { p10: 1, p50: 2, p90: 3 } : vol.ooip_t;
+  const mu = Math.log(Math.max(o.p50, 1));
+  const sigma = Math.max((Math.log(Math.max(o.p90, 1)) - Math.log(Math.max(o.p10, 1))) / 2.563, .05);
+  const sample = Array.from({ length: 4000 }, () => {
+    let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random();
+    return Math.exp(mu + sigma * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v));
+  });
+  const mcFig = el('figure'); const mcPlot = el('div'); mcFig.appendChild(mcPlot);
+  histogram(mcPlot, sample, [{ x: o.p10, label: 'P10' }, { x: o.p50, label: 'P50' }, { x: o.p90, label: 'P90' }], '地质储量 OOIP (t)');
+  mcFig.appendChild(el('figcaption', {
+    text: '直方图形状按接口返回的 P10/P50/P90 重建，仅用于示意分布宽度；三条参考线才是内核蒙特卡洛的实际输出。'
+  }));
+  const volCard = vol._error ? card('容积法储量', '不可得', el('p', { class: 'err', text: vol._error }))
+    : card('容积法储量', vol.method, mcFig);
+
+  const ccCard = cc._error ? card('动静态互校', '不适用', el('p', { class: 'sub', style: 'margin:0', text: cc._error }))
+    : card('动静态互校',
+    `隐含采收率 ${cc.rf_implied_pct}%｜区块经验区间 ${cc.rf_reference_pct.low_pct}% ~ ${cc.rf_reference_pct.high_pct}%（10%–90% 分位）` +
+    `（样本 ${cc.rf_reference_source.n} 口，来源 ${cc.rf_reference_source.source}）`,
+    [el('div', {}, [el('span', { class: 'chip ' + (cc.consistency === 'consistent' ? 'ok' : cc.consistency === 'conflict' ? 'crit' : 'warn'), text: '判定：' + cc.consistency })]),
+    el('div', { style: 'margin-top:12px' }, cc.findings.map(f => el('div', { class: 'finding ' + f.severity }, [
+      el('div', { text: f.finding }),
+      f.reason ? el('div', { class: 'act', text: '可能原因：' + f.reason }) : null,
+      f.action ? el('div', { class: 'act', text: '建议：' + f.action }) : null].filter(Boolean))))]);
+
+  const secCard = sec._error ? card('SEC 满足性检查清单', '不可得', el('p', { class: 'err', text: sec._error }))
+    : card('SEC 满足性检查清单',
+    `${sec.summary.n_pass}/${sec.summary.n_items} 项通过｜${sec.summary.n_needs_human} 项需人工确认｜基准日 ${sec.as_of}`,
+    [el('ul', { class: 'chk' }, sec.checklist.map(i => el('li', {}, [
+      el('span', {}, el('span', { class: 'chip ' + STATUS_CLS[i.status], text: STATUS_CN[i.status] })),
+      el('div', {}, [el('div', { class: 'it', text: i.item }),
+      el('div', { class: 'ev', text: '依据：' + i.evidence }),
+      i.citation ? el('div', { class: 'ct mono', text: i.citation }) : null].filter(Boolean))]))),
+    el('p', { class: 'sub', style: 'margin:12px 0 0;color:var(--warn)', text: sec.summary.disclaimer })]);
+
+  body.appendChild(el('div', { class: 'grid g2' }, [dcaCard, volCard]));
+  body.appendChild(el('div', { class: 'grid g2', style: 'margin-top:14px' }, [ccCard, secCard]));
+}
+
+/* ── 智能体对话：工具调用轨迹是这一页的主角 ── */
+function renderChat() {
+  const host = $('#tab-chat');
+  if (host.dataset.built) return;
+  host.dataset.built = '1';
+  host.innerHTML = '';
+
+  const input = el('input', { type: 'text', placeholder: '例如：GL-A-0357 的 SEC 储量预评估', style: 'flex:1;min-width:260px' });
+  const btn = el('button', { class: 'primary', text: '提问' });
+  const askBar = el('div', { class: 'filters' }, [input, btn]);
+  const ex = el('div', { class: 'examples' }, [
+    '什么时候达峰', '的 SEC 储量预评估', '动静态储量对得上吗', '递减曲线分析'
+  ].map(t => el('button', {
+    text: t, onclick: () => { input.value = (S.current || 'GL-A-0001') + ' ' + t; ask(); }
+  })).concat([
+    el('button', { text: '缺井号（看反问）', onclick: () => { input.value = '帮我预测达峰时间'; ask(); } }),
+    el('button', { text: '不存在的井（看异常处理）', onclick: () => { input.value = 'GL-Z-9999 什么时候达峰'; ask(); } }),
+    el('button', { text: '越权请求（看边界拦截）', onclick: () => { input.value = '把 GL-A-0001 的储量结果写回生产库'; ask(); } })
+  ]));
+
+  const answer = el('div', { class: 'answer', text: '在上面提问，或点一个示例。' });
+  const answerCard = card('回答', '', answer);
+  const traceHost = el('div', { class: 'trace' });
+  const guardBox = el('div', { style: 'margin-bottom:12px' });
+  const traceCard = card('工具调用轨迹', '大模型没有直接接触数据：它只能调下面这些工具，回答里的每个数字都要能在工具返回值里找到。',
+    [guardBox, traceHost]);
+
+  host.appendChild(askBar); host.appendChild(ex);
+  host.appendChild(el('div', { class: 'chatgrid', style: 'margin-top:14px' }, [answerCard, traceCard]));
+
+  async function ask() {
+    const q = input.value.trim(); if (!q) return;
+    btn.disabled = true; answer.textContent = '思考中…'; traceHost.innerHTML = ''; guardBox.innerHTML = '';
+    try {
+      const r = await fetch('/api/v1/agent/ask', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q })
+      });
+      const a = await r.json();
+      answer.textContent = a.answer;
+      const g = a.guard || {};
+      guardBox.appendChild(el('div', { class: 'legend' }, [
+        el('span', { class: 'chip ' + (g.ok ? 'ok' : 'crit'), text: g.ok ? `数值一致性通过（校验 ${g.numbers_checked} 个数字）` : `数值一致性未通过（${(g.violations || []).length} 处）` }),
+        el('span', { class: 'chip solid', text: `意图 ${a.intent}（${a.route.method}｜置信度 ${a.route.confidence}）` }),
+        el('span', { class: 'chip solid mono', text: a.elapsed_ms + ' ms' }),
+        a.degraded ? el('span', { class: 'chip warn', text: '已降级为模板成文' }) : null,
+        (a.citations && a.citations.cited && a.citations.cited.length)
+          ? el('span', { class: 'chip ' + (a.citations.invalid.length ? 'crit' : 'ok'), text: `条款引用 ${a.citations.cited.length} 条，无效 ${a.citations.invalid.length}` }) : null
+      ].filter(Boolean)));
+      if (!a.tool_trace.length) {
+        traceHost.appendChild(el('p', { class: 'empty', text: '本次未调用任何工具（反问澄清或越权拦截）' }));
+      }
+      a.tool_trace.forEach(t => traceHost.appendChild(el('div', { class: 'tstep ' + t.status }, [
+        el('div', {}, el('div', { class: 'tdot' })),
+        el('div', {}, [
+          el('div', { class: 'tname' }, [t.tool, ' ',
+          el('span', { class: 'chip ' + (t.status === 'ok' ? 'ok' : 'crit'), text: t.status }), ' ',
+          el('span', { class: 'chip solid mono', text: t.elapsed_ms + 'ms' })]),
+          el('div', { class: 'targs mono', text: JSON.stringify(t.args) }),
+          t.error ? el('div', { class: 'terr', text: t.error }) : null].filter(Boolean))])));
+      traceHost.appendChild(el('p', { class: 'sub', style: 'margin-top:12px',
+        text: 'trace_id ' + a.trace_id + '：全链路留痕已写入 audit_log，可回溯到输入数据与模型版本。' }));
+    } catch (e) {
+      answer.textContent = '请求失败：' + e.message;
+    } finally { btn.disabled = false; }
+  }
+  btn.addEventListener('click', ask);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+}
+
+/* ── 评测 ── */
+async function renderEval() {
+  const host = $('#tab-eval'); host.innerHTML = '<p class="empty">加载中…</p>';
+  const e = await api('/eval/summary');
+  host.innerHTML = '';
+  const CN = {
+    intent_accuracy: '意图识别准确率', slot_f1: '槽位抽取 F1', tool_chain_accuracy: '工具链正确率',
+    numeric_consistency: '数值一致性通过率', citation_hit_rate: '条款引用命中率',
+    hallucination_rate: '无据结论率（幻觉率）', p95_latency_ms: 'P95 响应时间 (ms)',
+    human_intervention_rate: '人工干预率'
+  };
+  if (!e.agent) {
+    host.appendChild(card('智能体评测', e.hint, el('p', { class: 'empty', text: '尚未运行评测' })));
+  } else {
+    const m = e.agent.metrics, t = e.agent.targets, p = m.pass_targets;
+    const rows = Object.keys(t).map(k => ({
+      k: CN[k] || k, v: m[k], target: t[k], ok: p[k],
+      d: k === 'p95_latency_ms' ? 0 : 4
+    }));
+    const c = card('智能体层指标', `评测集 ${m.n_cases} 条，六类构成。数值一致性由 guard.py 逐个数字回查工具返回值保证，不是模型自觉。`,
+      table([{ h: '指标', k: 'k' },
+      { h: '实测', k: 'v', num: true, render: r => el('span', { class: 'mono', text: fmt(r.v, r.d) }) },
+      { h: '目标', k: 'target', num: true, render: r => el('span', { class: 'mono', text: String(r.target) }) },
+      { h: '达标', k: 'ok', render: r => el('span', { class: 'chip ' + (r.ok ? 'ok' : 'crit'), text: r.ok ? '是' : '否' }) }], rows));
+    const byCat = Object.entries(e.agent.by_category).map(([k, v]) => ({ cat: k, ...v }));
+    const c2 = card('分类别表现', '诱导性提问与越权请求是幻觉最容易冒出来的地方，单独看。',
+      table([{ h: '类别', k: 'cat' }, { h: '用例数', k: 'n', num: true, d: 0 },
+      { h: '意图准确率', k: 'intent_accuracy', num: true },
+      { h: '数值一致性', k: 'numeric_consistency', num: true }], byCat));
+    host.appendChild(el('div', { class: 'grid g2' }, [c, c2]));
+    host.appendChild(card('这张表的边界', '',
+      el('p', { class: 'sub', style: 'margin:0',
+        text: '150 条用例由模板按井号铺开生成，是我们自己出的题，不是硬基准。真正有价值的评测集要由业务方出题。' })));
+  }
+  if (e.algo) {
+    const rows = e.algo.rows.map(r => ({ ...r, target: TARGET_CN[r.target] || r.target }));
+    host.appendChild(el('div', { style: 'margin-top:14px' }, card('切分方式对比', e.algo.conclusion,
+      table([{ h: '切分', k: 'split' }, { h: '目标', k: 'target' }, { h: 'MAE', k: 'mae', num: true },
+      { h: '覆盖率', k: 'coverage', num: true }, { h: '相对基线', k: 'gain_pct', num: true, d: 1 }], rows))));
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   5. 路由与启动
+   ══════════════════════════════════════════════════════════════ */
+const RENDER = { overview: renderOverview, well: renderWell, reserves: renderReserves, chat: renderChat, eval: renderEval };
+function switchTab(name) {
+  document.querySelectorAll('nav.tabs button').forEach(b =>
+    b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+  ['overview', 'well', 'reserves', 'chat', 'eval'].forEach(t => { $('#tab-' + t).hidden = t !== name; });
+  const f = RENDER[name];
+  if (f) Promise.resolve(f()).catch(e => { $('#tab-' + name).innerHTML = ''; $('#tab-' + name).appendChild(el('p', { class: 'err', text: '加载失败：' + e.message })); });
+}
+function pickWell(code) { S.current = code; }
+document.querySelectorAll('nav.tabs button').forEach(b =>
+  b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+const themeBtn = $('#themeBtn');
+function applyTheme(t) {
+  if (t) document.documentElement.setAttribute('data-theme', t);
+  else document.documentElement.removeAttribute('data-theme');
+  const dark = t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches);
+  themeBtn.textContent = dark ? '浅色' : '深色';
+}
+themeBtn.addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const dark = cur === 'dark' || (!cur && matchMedia('(prefers-color-scheme: dark)').matches);
+  const next = dark ? 'light' : 'dark';
+  try { localStorage.setItem('theme', next); } catch (_) { }
+  applyTheme(next);
+  const active = document.querySelector('nav.tabs button[aria-selected="true"]');
+  if (active) switchTab(active.dataset.tab);   /* 重画图表，让 SVG 取到新的色值 */
+});
+try { applyTheme(localStorage.getItem('theme')); } catch (_) { applyTheme(null); }
+
+switchTab('overview');
+</script>
+</body>
+</html>

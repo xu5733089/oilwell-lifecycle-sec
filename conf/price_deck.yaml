@@ -1,0 +1,22 @@
+# SEC 价格册 —— 12 个月首日价格的未加权算术平均（Reg S-X 4-10）
+# 示例数值仅供跑通流程，正式评估须由经营部门提供
+decks:
+  deck_2026_12:
+    as_of: "2026-12-31"
+    currency: "USD"
+    monthly_first_day_prices_usd_bbl:
+      [72.1, 70.4, 74.8, 76.2, 73.5, 71.9, 69.8, 72.6, 75.1, 77.3, 74.0, 72.8]
+    # 以下为经济极限计算参数
+    opex_per_well_month_usd: 9000      # 单井月操作成本
+    transport_treat_usd_bbl: 4.5       # 处理运输费
+    tax_rate: 0.28                     # 综合税费率
+    bbl_per_tonne: 7.3                 # 原油体积质量换算（按 API 度调整）
+  deck_2025_12:
+    as_of: "2025-12-31"
+    currency: "USD"
+    monthly_first_day_prices_usd_bbl:
+      [81.0, 79.5, 83.2, 84.6, 80.9, 78.4, 76.2, 79.1, 82.0, 83.5, 80.2, 78.9]
+    opex_per_well_month_usd: 8600
+    transport_treat_usd_bbl: 4.5
+    tax_rate: 0.28
+    bbl_per_tonne: 7.3

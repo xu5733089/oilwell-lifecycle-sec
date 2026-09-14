@@ -1,0 +1,44 @@
+project: oilwell-lifecycle-sec
+db:
+  # SQLite 零配置起步；换 PostgreSQL 只需改 url 并使用 sql/schema.sql（DDL 两边通用）
+  url: "sqlite:///data/warehouse.db"
+paths:
+  data_dir: "data"
+  artifacts_dir: "data/artifacts"
+  standards_dir: "data/standards"
+
+synth:
+  n_wells: 600
+  seed: 20260908
+  blocks: ["GL-A", "GL-B", "SB-C"]
+  layers: ["Q1", "Q2", "F1"]
+
+model:
+  obs_days: 90                 # 新井早期观测窗口
+  quantiles: [0.1, 0.5, 0.9]
+  targets: ["t_oil_break", "t_peak", "q_peak", "p_peak", "eur"]
+  conformal_alpha: 0.2         # 名义覆盖率 1-alpha = 80%
+  split:
+    method: "time"             # time | group | random（正式评测只用 time / group）
+    calib_ratio: 0.2
+    test_ratio: 0.25
+
+llm:
+  # backend: internal | glm | mock
+  # mock 后端不需要任何模型即可跑通整条智能体链路，用于离线测试与评测
+  backend: "mock"
+  internal:
+    base_url: "http://内网大模型地址/v1"
+    model: "Qwen3.8-27B"
+    api_key_env: "INTERNAL_LLM_API_KEY"
+  glm:
+    base_url: "https://open.bigmodel.cn/api/paas/v4"
+    model: "glm-5.3-flash"
+    api_key_env: "GLM_API_KEY"
+  timeout_s: 60
+  max_tool_calls: 8            # 单会话工具调用上限（§7.4 任务边界）
+
+agent:
+  intents: ["predict_lifecycle","find_analogs","fit_dca","estimate_reserves",
+            "cross_check","sec_screen","query_well","gen_report","fallback"]
+  router_confidence_threshold: 0.35
