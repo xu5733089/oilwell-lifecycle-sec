@@ -1,6 +1,7 @@
 """精确 TreeSHAP（路径依赖口径），直接读取 sklearn HistGradientBoosting 的树结构。
 
-内网装不上 shap 包，这里自己实现，并用"穷举子集的 Shapley 定义"逐位对拍（tests/test_models_phase3.py）。
+自己实现而不直接依赖 shap 包：部署时零依赖，算法每一步都能讲清楚；正确性用两条独立证据保证 ——
+"穷举子集的 Shapley 定义"逐位对拍，以及装了 shap 包时与其 TreeExplainer 交叉比对（tests/test_models_phase3.py）。
 
 算法：一棵树的输出 = Σ_叶子 v · Π_{路径上的特征 j} [x 是否沿该特征的全部分裂走到这片叶子]。
 特征 j "缺席"时按训练样本覆盖比例 z_j 走各分支（路径依赖口径），"在场"时取 o_j ∈ {0, 1}。

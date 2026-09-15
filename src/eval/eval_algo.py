@@ -50,7 +50,11 @@ def _run(obs_days: int | None) -> Dict:
                              coverage=round(r["model"]["coverage"], 4),
                              baseline_mae=round(r["baseline"]["mae"], 4),
                              gain_pct=r["mae_gain_vs_baseline_pct"],
-                             n_test=r["model"]["n"]))
+                             n_test=r["model"]["n"],
+                             gbdt_mae=(r.get("families", {}).get("gbdt") or {}).get("mae"),
+                             seq_mae=(r.get("families", {}).get("seq") or {}).get("mae"),
+                             blend_no_guard_mae=(r.get("families", {}).get("blend_no_guard") or {}).get("mae"),
+                             n_drift_flagged=r.get("n_drift_flagged")))
 
     # 随机切分相对时间切分的"虚高幅度"：这个数越大，越说明泄漏是真实存在的
     inflation: Dict[str, float] = {}

@@ -180,14 +180,21 @@ def _features_for(well_code: str, obs_days: Optional[int] = None):
 
 
 def _family_predictions(b: Dict, X: pd.DataFrame, p: pd.DataFrame, well_id: str, obs_days: int):
-    """线上预测 = 梯度提升 与 序列模型 按目标加权融合（权重训练时在校准集 A 半上选出）。
-    旧版模型包没有序列模型时退回纯梯度提升。"""
+    """线上预测 = 梯度提升 与 序列模型 按目标加权融合（权重训练时在校准集上选出）。
+    输入超出序列模型训练分布（漂移守卫判定）时该井序列权重置 0；旧版模型包没有序列模型时退回纯梯度提升。"""
     pg = b["model"].predict(X)
     sm = b.get("seq_model")
     if sm is None:
         return pg, None
     ps = sm.predict(sequence_tensor(p, [well_id], obs_days), X, index=X.index)
-    return blend(pg, ps, b.get("blend_weights", {})), dict(gbdt=pg, seq=ps)
+    guard = b.get("drift_guard")
+    drift = None
+    if guard is not None:
+        d = guard.assess(X).iloc[0]
+        drift = dict(flagged=bool(d["flagged"]), score=_r(d["score"], 3), threshold=_r(guard.threshold, 3),
+                     top_feature=d["top_feature"], novel_category=bool(d["novel_category"]))
+    off = np.array([bool(drift and drift["flagged"])])
+    return blend(pg, ps, b.get("blend_weights", {}), off=off), dict(gbdt=pg, seq=ps, drift=drift)
 
 
 @cached_service
@@ -197,7 +204,9 @@ def predict_lifecycle(well_code: str, obs_days: Optional[int] = None,
     b = _bundle()
     w, p, X, obs_days = _features_for(well_code, obs_days)
     preds, fam = _family_predictions(b, X, p, w["well_id"], obs_days)
-    conf = b["conformal"]
+    drifted = bool(fam and fam.get("drift") and fam["drift"]["flagged"])
+    # 漂移井的预测已退回梯度提升，区间同样用梯度提升自己的保形修正量
+    conf = b.get("conformal_family", {}).get("gbdt", b["conformal"]) if drifted else b["conformal"]
     out: Dict[str, Dict] = {}
     units = dict(t_oil_break="d", t_peak="d", q_peak="t/d", p_peak="MPa", eur="t")
     want = set(targets or preds.keys())
@@ -221,7 +230,7 @@ def predict_lifecycle(well_code: str, obs_days: Optional[int] = None,
         families = {}
         cf = b.get("conformal_family", {})
         for tgt in out:
-            row = dict(seq_weight=_r(b.get("blend_weights", {}).get(tgt, 0.0), 2),
+            row = dict(seq_weight=0.0 if drifted else _r(b.get("blend_weights", {}).get(tgt, 0.0), 2),
                        blend=[out[tgt]["p10"], out[tgt]["p50"], out[tgt]["p90"]])
             for name in ("gbdt", "seq"):
                 dfp = fam[name][tgt]
@@ -243,6 +252,7 @@ def predict_lifecycle(well_code: str, obs_days: Optional[int] = None,
 
     return dict(**_env(trace_id), well_code=w["well_code_anon"], obs_days=obs_days,
                 cum_to_date_t=_r(cum), results=out, curve=curve, model_families=families,
+                input_drift=fam.get("drift") if fam else None,
                 explain=dict(attribution_target="t_peak", top_features=top,
                              method=SHAP_METHOD + "；解释对象为梯度提升 P50 分量",
                              calibration=dict(alpha=conf.alpha,
@@ -259,12 +269,15 @@ def explain_lifecycle(well_code: str, target: str = "eur", trace_id: Optional[st
     shap = {t: local_shap(b["model"], X.iloc[0], t, 0.5, top_k=8) for t in b["model"].models}
     temporal = None
     sm = b.get("seq_model")
+    guard = b.get("drift_guard")
+    drifted = bool(guard is not None and guard.assess(X)["flagged"].iloc[0])
     if sm is not None and target in sm.targets:
         seq = sequence_tensor(p, [w["well_id"]], obs_days)
         ig = sm.temporal_attribution(seq[0], X.iloc[[0]], target)
         early = p[p["day_index"] <= obs_days].sort_values("day_index")
         temporal = dict(
-            target=target, obs_days=obs_days, seq_weight=_r(b.get("blend_weights", {}).get(target, 0.0), 2),
+            target=target, obs_days=obs_days, drift_flagged=drifted,
+            seq_weight=0.0 if drifted else _r(b.get("blend_weights", {}).get(target, 0.0), 2),
             channels=list(CHANNELS),
             matrix=[[round(float(v), 5) for v in row] for row in ig["matrix"]],
             per_day=[round(float(v), 5) for v in ig["per_day"]],
@@ -680,6 +693,11 @@ def eval_summary(trace_id: Optional[str] = None) -> Dict:
     for key, fname in (("agent", "eval_agent.json"), ("algo", "eval_algo.json"), ("dca", "eval_dca.json")):
         f = path("artifacts_dir") / fname
         out[key] = _json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+    meta = _bundle()["meta"]
+    out["model"] = dict(model_version=meta["model_version"], split_method=meta.get("split_method"),
+                        failure_cases=meta.get("failure_cases"), drift=(meta.get("seq") or {}).get("drift"),
+                        families={t: dict(families=r.get("families"), seq_weight=r.get("seq_weight"))
+                                  for t, r in (meta.get("report") or {}).items()})
     out["hint"] = "为空表示尚未运行：python -m src.cli eval-agent / eval-algo / eval-dca"
     return out
 

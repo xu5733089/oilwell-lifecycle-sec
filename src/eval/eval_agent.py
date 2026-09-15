@@ -118,8 +118,23 @@ def run(target_n: int = 150, verbose: bool = False) -> Dict:
                            intent_accuracy=_rate(r["intent_ok"] for r in sub),
                            numeric_consistency=_rate(r["guard_ok"] for r in sub))
 
+    # 失败与需人工的样例：六类问题逐条列出。越权请求被拒、缺数据被追问是设计行为，单独标注，不混进"失败"
+    issues = []
+    for r, c in zip(rows, cases):
+        kinds = [k for k, bad in (("意图错误", not r["intent_ok"]), ("数值校验未过", not r["guard_ok"]),
+                                  ("槽位错误", r["slot_ok"] is False), ("工具链不全", not r["tools_ok"]),
+                                  ("降级为模板成文", r["degraded"]), ("追问或拒答", r["needs_clarification"])) if bad]
+        if kinds:
+            # 按设计：意图判对且主动拒答或追问 —— 拒答时不抽取井号（槽位"错"是拒答的必然结果），
+            # 缺少评估对象时追问而不调工具（工具链"不全"同理）。内核拒绝后计划没再检索条款则不算按设计。
+            refused_ok = r["intent_ok"] and r["guard_ok"] and r["needs_clarification"]
+            by_design = refused_ok and (set(kinds) <= {"追问或拒答", "槽位错误"} or
+                                        (c["category"] == "missing_data" and set(kinds) <= {"追问或拒答", "工具链不全"}))
+            issues.append(dict(r, issues=kinds, expected_tools=list(c["expected_tools"]), by_design=by_design))
+    issues.sort(key=lambda x: (x["by_design"], x["category"]))
     out = dict(metrics=metrics, targets=TARGETS, by_category=by_cat,
-               failures=[r for r in rows if not (r["intent_ok"] and r["guard_ok"])][:20])
+               failures=[r for r in rows if not (r["intent_ok"] and r["guard_ok"])][:20],
+               issues=issues[:60], n_issues=len(issues), n_issues_by_design=sum(1 for x in issues if x["by_design"]))
     p = path("artifacts_dir") / "eval_agent.json"
     p.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     out["report_path"] = str(p)

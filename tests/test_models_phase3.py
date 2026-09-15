@@ -179,3 +179,76 @@ class TestOfficialCorpusParser(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDriftGuard(unittest.TestCase):
+    def _frame(self, n, rng, shift=0.0, block="block_A"):
+        X = pd.DataFrame({"a": rng.normal(shift, 1, n), "b": rng.normal(0, 1, n),
+                          "block_A": 0.0, "block_B": 0.0})
+        X[block] = 1.0
+        return X
+
+    def test_in_distribution_rarely_flagged_and_far_inputs_flagged(self):
+        from src.models.drift import DriftGuard
+        rng = np.random.default_rng(0)
+        cols = ["a", "b", "block_A", "block_B"]
+        tr = pd.concat([self._frame(200, rng), self._frame(200, rng, block="block_B")], ignore_index=True)
+        cal = pd.concat([self._frame(50, rng), self._frame(50, rng, block="block_B")], ignore_index=True)
+        g = DriftGuard().fit(tr, cols).calibrate(cal)
+        same = pd.concat([self._frame(100, rng), self._frame(100, rng, block="block_B")], ignore_index=True)
+        self.assertLess(g.assess(same)["flagged"].mean(), 0.08)
+        far = self._frame(50, rng, shift=12.0)
+        self.assertGreater(g.assess(far)["flagged"].mean(), 0.9)
+        self.assertEqual(set(g.assess(far)["top_feature"]), {"a"})
+
+    def test_unseen_category_is_flagged_even_when_numbers_look_normal(self):
+        from src.models.drift import DriftGuard
+        rng = np.random.default_rng(1)
+        tr = self._frame(300, rng)                     # 训练只见过区块 A
+        g = DriftGuard().fit(tr, ["a", "b", "block_A", "block_B"]).calibrate(self._frame(80, rng))
+        r = g.assess(self._frame(40, rng, block="block_B"))
+        self.assertTrue(r["novel_category"].all() and r["flagged"].all())
+
+
+class TestCrossfitBlend(unittest.TestCase):
+    def test_each_half_uses_weights_chosen_on_the_other_half(self):
+        from src.models.ensemble import select_and_crossfit
+        idx = pd.RangeIndex(40)
+        y = np.linspace(10, 50, 40)
+        good = pd.DataFrame({"p10": y - 2, "p50": y, "p90": y + 2}, index=idx)
+        bad = pd.DataFrame({"p10": y * 0 + 10, "p50": y * 0 + 30, "p90": y * 0 + 50}, index=idx)
+        # A 折（偶数行）序列模型准、B 折（奇数行）序列模型差：每折用对面选出的权重
+        ps = good.copy()
+        ps.iloc[1::2] = bad.iloc[1::2].to_numpy()
+        pg = bad.copy()
+        pg.iloc[1::2] = good.iloc[1::2].to_numpy()
+        Y = pd.DataFrame({"eur": y}, index=idx)
+        deployed, cross, folds = select_and_crossfit(Y, {"eur": pg}, {"eur": ps}, ["eur"], idx[::2], idx[1::2])
+        self.assertEqual(folds["a"]["eur"], 0.0)       # A 折用 B 折选出的权重：B 折里序列模型差 → 0
+        self.assertEqual(folds["b"]["eur"], 1.0)
+        np.testing.assert_allclose(cross["eur"].loc[idx[::2], "p50"], pg.loc[idx[::2], "p50"])
+
+    def test_flagged_rows_fall_back_to_gbdt(self):
+        from src.models.ensemble import blend
+        a = pd.DataFrame({"p10": [1.0, 1.0], "p50": [2.0, 2.0], "p90": [3.0, 3.0]})
+        b = pd.DataFrame({"p10": [5.0, 5.0], "p50": [6.0, 6.0], "p90": [7.0, 7.0]})
+        out = blend({"x": a}, {"x": b}, {"x": 1.0}, off=[True, False])["x"]
+        self.assertEqual(out["p50"].tolist(), [2.0, 6.0])
+
+
+class TestTreeSHAPAgainstShapPackage(unittest.TestCase):
+    """第二条独立证据：与社区标准实现 shap.TreeExplainer 交叉比对（没装 shap 时跳过）。"""
+
+    def test_matches_shap_package(self):
+        try:
+            import shap
+        except Exception:
+            self.skipTest("未安装 shap 包")
+        rng = np.random.default_rng(7)
+        X = rng.normal(size=(400, 6))
+        y = X[:, 0] * 3 + X[:, 1] * X[:, 2] + np.sin(X[:, 3]) + rng.normal(size=400) * .1
+        m = HistGradientBoostingRegressor(max_iter=40, max_depth=5, random_state=0).fit(X, y)
+        ours = TreeExplainer(m)
+        ref = shap.TreeExplainer(m, feature_perturbation="tree_path_dependent")
+        np.testing.assert_allclose(ours.shap_values(X[:30]), ref.shap_values(X[:30]), atol=1e-6)
+        self.assertAlmostEqual(ours.expected_value, float(np.ravel(ref.expected_value)[0]), places=6)

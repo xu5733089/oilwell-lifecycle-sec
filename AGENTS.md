@@ -51,8 +51,13 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
 
 ## 口径
 
-**线上预测 = 梯度提升与序列模型按目标融合**：权重在校准集 A 半上选、保形校准只用 B 半，两者不许用同一批井；
+**线上预测 = 梯度提升与序列模型按目标融合**：权重在全部校准井上选；保形校准用交叉拟合 ——
+每口校准井的一致性分数用另一半校准井选出的权重算（`ensemble.select_and_crossfit`），任何一口井的标签都不许参与决定它自己用的权重。
 权重可能是 0，不许为了"融合更好看"手工改权重。SHAP 解释的是梯度提升 P50 分量，界面与文案都要说清楚。
+
+**输入漂移守卫**（`src/models/drift.py`）：区块 / 层系没见过，或连续特征偏离度超过校准集 99% 分位的井，序列权重逐井置 0，
+区间改用梯度提升自己的保形修正量。阈值只由训练集与校准集的**输入**决定；**不许看测试集结果回调阈值或规则** ——
+守卫在时间外推下有代价、在区块迁移下保底，两边的数字都照实写进 README。
 
 **准则条文库是生成物**：`data/standards/*.md` 由 `python -m src.cli build-standards` 从 `data/standards/raw/`（eCFR 官方 XML）生成，
 不许手改；中文标题、要点、检索术语在 `data/standards/notes_zh.yaml`，一律标注"非官方说明"，不冒充译文。
@@ -99,7 +104,8 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
 
 ## 测试
 
-用 stdlib `unittest`，不引入 pytest（内网离线环境常装不上；pytest 也能直接跑这些用例）。
+用 stdlib `unittest`，不强制 pytest（pytest 也能直接跑这些用例）。第三方库可以装；只有大模型调用需要走内网。
+自研实现（TreeSHAP、序列模型、物理约束递减）要有独立的正确性证据：定义对拍、数值梯度校验，或与成熟库交叉比对（`shap` 装了就会跑）。
 
 有几类测试不许删：
 
@@ -114,6 +120,7 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
 - `TestTreeSHAP::test_matches_brute_force_shapley` —— 自研 TreeSHAP 必须与 Shapley 定义逐位一致
 - `TestSequenceModel::test_backprop_matches_numeric_gradient` —— 手写反向传播的数值梯度校验
 - `TestPhysicsDCA::test_eur_cap_is_enforced` / `TestRAG::test_official_text_and_precise_citations` —— 物理上限与条文原文
+- `TestDriftGuard` / `TestCrossfitBlend` —— 漂移井必须退回梯度提升；交叉拟合里每一折必须用另一折选出的权重
 
 ## 大模型后端
 

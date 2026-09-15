@@ -432,6 +432,7 @@ a.btn{text-decoration:none}
 .pulse-kpis .kval{transition:color .2s}
 .legend i.swatchbar{width:120px;height:8px;border-radius:4px}
 .best{font-weight:600;color:var(--ok)}
+.tags{display:inline-flex;gap:4px;flex-wrap:wrap}
 .csearch{padding:10px 12px;border-bottom:1px solid var(--rule-soft)}
 .csearch input{width:100%}
 .clist{max-height:640px;overflow:auto;padding:4px 0}
@@ -2235,7 +2236,10 @@ async function renderWell() {
       { label: '序列模型', lo: f.seq[0], mid: f.seq[1], hi: f.seq[2], color: cssVar('--c4') },
       { label: '融合（线上）', lo: f.blend[0], mid: f.blend[1], hi: f.blend[2], color: cssVar('--c1'), strong: true }],
     { actual: act && act[t] != null ? act[t] : null, unit: pr[t].unit, digits: t === 'eur' ? 0 : 2 });
-    famBody.replaceChildren(el('figure', {}, fig));
+    const dr = pred.input_drift;
+    famBody.replaceChildren(...[dr && dr.flagged ? alertBar('warn', '输入超出序列模型训练范围',
+      (dr.novel_category ? '该井的区块或层系在训练集中没出现过' : `特征"${FEAT(dr.top_feature)}"偏离训练分布（偏离度 ${dr.score}，阈值 ${dr.threshold}）`) +
+      '，线上预测已退回梯度提升，区间也改用梯度提升的保形校准；序列模型一行仅供对照。') : null, el('figure', {}, fig)].filter(Boolean));
   }
 
   let xReq = 0;
@@ -2258,7 +2262,7 @@ async function renderWell() {
       el('div', { class: 'kn', text: `基准值 ${fmt(sh.expected_value)} + 各特征贡献 = ${fmt(sh.prediction)} ${pr[t].unit}（可加性误差 ${sh.additivity_gap}）` }));
     } else shapBody.replaceChildren(emptyState('该目标没有 SHAP 解释'));
     const tm = ex.temporal;
-    tempMeta.textContent = tm ? `${TARGET_CN[tm.target] || tm.target} · 序列模型融合权重 ${fmt(tm.seq_weight, 2)}` : '';
+    tempMeta.textContent = tm ? `${TARGET_CN[tm.target] || tm.target} · 序列模型融合权重 ${fmt(tm.seq_weight, 2)}` + (tm.drift_flagged ? ' · 本井输入漂移，序列模型未参与线上融合' : '') : '';
     if (!tm) { tempBody.replaceChildren(emptyState('当前模型包没有序列模型，重新训练后可见')); return; }
     const fig = el('div');
     heatStrip(fig, tm);
@@ -3564,8 +3568,9 @@ async function renderEval() {
     const rows = splits.flatMap(s => [{ _group: SPLIT_CN[s] || s },
       ...e.algo.rows.filter(r => r.split === s).map(r => ({ ...r, target: TARGET_CN[r.target] || r.target }))]);
     out.push(el('div', { class: 'row' }, panel('算法层 · 切分方式对比', { meta: '对外报告一律使用时间外推切分的指标', note: e.algo.conclusion, flush: true },
-      table([{ h: '目标', k: 'target' }, { h: 'MAE', k: 'mae', num: true }, { h: '覆盖率', k: 'coverage', num: true },
-        { h: '相对基线 (%)', k: 'gain_pct', num: true, d: 1 }], rows))));
+      table([{ h: '目标', k: 'target' }, { h: '线上 MAE', k: 'mae', num: true }, { h: '覆盖率', k: 'coverage', num: true },
+        { h: '相对基线 (%)', k: 'gain_pct', num: true, d: 1 }, { h: '梯度提升 MAE', k: 'gbdt_mae', num: true },
+        { h: '未加守卫的融合 MAE', k: 'blend_no_guard_mae', num: true }, { h: '漂移退回 (口)', k: 'n_drift_flagged', num: true, d: 0 }], rows))));
   }
   if (e.dca) {
     const rows = e.dca.horizons.flatMap(H => [{ _group: `峰后只用前 ${H} 个月历史拟合` },
@@ -3580,6 +3585,66 @@ async function renderEval() {
       { h: '高估 > 20% 的井 (%)', k: 'over', num: true, d: 1 }, { h: 'EUR 误差 90% 分位 (%)', k: 'p90', num: true, d: 1 },
       { h: '上限触发 (%)', k: 'cap', num: true, d: 1 }], rows))));
   } else out.push(alertBar('info', '尚未运行递减模型回测', 'python -m src.cli eval-dca'));
+
+  /* ── 失败样例：主动暴露模型、智能体与递减模型的边界 ── */
+  const fc = e.model && e.model.failure_cases;
+  if (fc && Object.keys(fc).length) {
+    const keys = Object.keys(fc).filter(k => TARGET_CN[k]);
+    if (!S.fcTarget || !fc[S.fcTarget]) S.fcTarget = fc.eur ? 'eur' : keys[0];
+    const UNIT = { t_oil_break: 'd', t_peak: 'd', q_peak: 't/d', p_peak: 'MPa', eur: 't' };
+    const body = el('div'), meta = el('span'), dr = e.model.drift;
+    const draw = k => {
+      S.fcTarget = k;
+      const f = fc[k], d = k === 'eur' ? 0 : 2;
+      meta.textContent = `测试集 ${f.n} 口 · 实际低于 P10：${f.below_p10} 口（高估风险）· 实际高于 P90：${f.above_p90} 口`;
+      body.replaceChildren(table([
+        { h: '井号', k: 'well_code', render: r => el('a', { href: '#/well', text: r.well_code, onclick: () => { S.current = r.well_code; } }) },
+        { h: '区块', k: 'block' }, { h: '投产日期', k: 'first_prod_date' },
+        { h: `实际 (${UNIT[k] || ''})`, k: 'actual', num: true, d },
+        { h: 'P50（P10 ~ P90）', k: 'p50', num: true, render: r => `${fmt(Math.max(r.p50, 0), d)}（${fmt(Math.max(r.p10, 0), d)}${r.p10 < 0 ? '*' : ''} ~ ${fmt(r.p90, d)}）` },
+        { h: '误差', k: 'rel_error_pct', num: true, render: r => el('span', {}, [tag(r.direction, r.direction === '高估' ? 'crit' : 'warn'), ` ${fmt(r.rel_error_pct, 1)}%`]) },
+        { h: '实际落点', k: 'position', render: r => tag(r.position, r.position === '区间内' ? 'ok' : r.position === '低于 P10' ? 'crit' : 'warn') },
+        { h: '梯度提升 / 序列 P50', k: 'gbdt_p50', num: true, render: r => `${fmt(r.gbdt_p50, d)} / ${r.seq_p50 == null ? '—' : fmt(r.seq_p50, d)}` },
+        { h: '序列权重', k: 'seq_weight_used', num: true, render: r => (r.drift && r.drift.flagged ? tag('漂移 · 0', 'warn') : fmt(r.seq_weight_used, 2)) },
+        { h: 'SHAP 前三（梯度提升）', k: 'shap', cls: 'wrap', render: r => r.shap_top.map(x => `${FEAT(x.feature)} ${signed(x.contrib, d)}`).join('；') }
+      ], f.worst));
+    };
+    out.push(el('div', { class: 'row' }, panel('失败样例 · 预测模型', {
+      meta, flush: true,
+      actions: [segControl(keys.map(x => [x, TARGET_CN[x]]), S.fcTarget, draw, '预测目标')],
+      note: ['每个目标列出测试集误差最大的 8 口井，口径与线上一致（融合 + 漂移守卫 + 保形校准）；点击井号进入单井页看完整解释。',
+        '"实际低于 P10"是 SEC 口径最危险的一类：实际采出比低估计还少，按区间下沿报的已证实储量也会偏高。',
+        '带 * 的区间下沿：保形校准对称加宽后低于 0，按物理下界 0 显示；覆盖率按未截断的区间计算（截断不改变是否覆盖）。',
+        dr ? `漂移守卫：阈值 ${dr.threshold}（校准集 ${Math.round(dr.quantile * 100)}% 分位），测试集标记 ${dr.n_flagged_test} / ${dr.n_test} 口，其中区块或层系没见过的 ${dr.n_novel_category_test} 口。` : null]
+    }, body)));
+    draw(S.fcTarget);
+  }
+  if (e.agent && e.agent.issues) {
+    const iss = e.agent.issues;
+    const CAT = { normal: '正常问法', colloquial: '口语省略', composite: '跨模块组合', missing_data: '缺数据', out_of_scope: '越权请求', adversarial: '诱导性提问' };
+    out.push(el('div', { class: 'row' }, panel('失败与需人工的样例 · 智能体', {
+      meta: `共 ${e.agent.n_issues} 条 · 按设计应追问或拒答 ${e.agent.n_issues_by_design} 条 · 需要改进 ${e.agent.n_issues - e.agent.n_issues_by_design} 条`, flush: true,
+      note: ['六类问题：意图错误、数值校验未过、槽位错误、工具链不全、降级为模板成文、追问或拒答。',
+        '越权请求被拒、缺少必要参数被追问是设计行为，标为"按设计"，不算失败；需要改进的排在前面。']
+    }, iss.length ? table([
+      { h: '用例', k: 'id' }, { h: '类别', k: 'category', render: r => CAT[r.category] || r.category },
+      { h: '问题', k: 'question', cls: 'wrap' },
+      { h: '问题类型', k: 'issues', render: r => el('span', { class: 'tags' }, [...r.issues.map(x => tag(x, r.by_design ? null : 'warn')), r.by_design ? tag('按设计', 'ok') : null]) },
+      { h: '期望 / 实际意图', k: 'intent', render: r => `${r.expected_intent} / ${r.got_intent}` },
+      { h: '期望工具 / 实际调用', k: 'tools', cls: 'wrap', render: r => `${(r.expected_tools || []).join('、') || '—'} / ${(r.got_tools || []).join('、') || '—'}` }
+    ], iss, { scroll: true }) : emptyState('没有失败或需人工的用例'))));
+  }
+  if (e.dca && e.dca.worst_overestimates && e.dca.worst_overestimates.length) {
+    const rows = e.dca.horizons.flatMap(h => [{ _group: `峰后只用前 ${h} 个月历史拟合` }, ...e.dca.worst_overestimates.filter(r => r.horizon_months === h)]);
+    out.push(el('div', { class: 'row' }, panel('失败样例 · 递减模型高估最多的井', {
+      meta: '每种方法各取 EUR 高估最多的 5 口，并给另一种方法在同一口井上的误差', flush: true,
+      note: ['高估是 SEC 口径最需要避免的错误。对照列能看出是"这口井本身难"（两种方法都高估）还是"某种方法的缺陷"（只有一种高估）。']
+    }, table([{ h: '方法', k: 'method_cn' },
+      { h: '井号', k: 'well_code', render: r => el('a', { href: '#/reserves', text: r.well_code, onclick: () => { S.current = r.well_code; } }) },
+      { h: '区块', k: 'block' }, { h: 'EUR 真值 (t)', k: 'eur_true', num: true, d: 0 }, { h: 'EUR 预测 (t)', k: 'eur_pred', num: true, d: 0 },
+      { h: '高估', k: 'error_pct', num: true, render: r => tag(`+${fmt(r.error_pct, 1)}%`, 'crit') },
+      { h: '另一方法同井误差', k: 'other_error_pct', num: true, render: r => `${r.other_method_cn} ${signed(r.other_error_pct, 1)}%` }], rows, { scroll: true }))));
+  }
   show(host, ...out);
 }
 

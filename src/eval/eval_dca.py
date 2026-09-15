@@ -98,7 +98,7 @@ def run(horizons: List[int] | None = None) -> Dict:
                 continue
             tt, t_now = months - months[0], H - months[0]
             cum_to = float(p[p["day_index"] <= w["t_peak"] + H * 30.4]["oil_t"].sum())
-            r = dict(well_id=w["well_id"], block=w["block"], H=H, actual_next12_t=float(np.sum(rates[fut]) * 30.4),
+            r = dict(well_id=w["well_id"], well_code=w["well_code_anon"], block=w["block"], H=H, actual_next12_t=float(np.sum(rates[fut]) * 30.4),
                      eur_true=truth.get(w["well_id"]))
             fa = dca.fit_best(tt[sel], rates[sel], d_min_year=0.075)
             r["arps_next12_t"] = float(np.sum(dca.rate(tt[fut], fa)) * 30.4)
@@ -126,6 +126,20 @@ def run(horizons: List[int] | None = None) -> Dict:
                 rec["cap_binding_pct"] = round(float(d[f"{key}_cap_binding"].mean() * 100), 1)
             table.append(rec)
 
+    # 高估最多的井：SEC 口径最怕高估，逐井列出，并给另一种方法在同一口井上的误差作对照
+    worst = []
+    if truth and len(df):
+        for H in horizons:
+            d = df[(df["H"] == H) & df["eur_true"].notna()]
+            for key, other in (("arps", "physics_analog"), ("physics_analog", "arps")):
+                e = (d[f"{key}_eur"] / d["eur_true"] - 1.0).replace([np.inf, -np.inf], np.nan).dropna()
+                for i in e.sort_values(ascending=False).head(5).index:
+                    worst.append(dict(horizon_months=H, method=key, method_cn=METHODS[key], well_code=d.loc[i, "well_code"],
+                                      block=d.loc[i, "block"], eur_true=round(float(d.loc[i, "eur_true"]), 1),
+                                      eur_pred=round(float(d.loc[i, f"{key}_eur"]), 1), error_pct=round(float(e.loc[i] * 100), 1),
+                                      other_method_cn=METHODS[other],
+                                      other_error_pct=round(float((d.loc[i, f"{other}_eur"] / d.loc[i, "eur_true"] - 1) * 100), 1)))
+
     def pick(H, key, metric, field):
         return next((r.get(metric, {}).get(field) for r in table
                      if r["horizon_months"] == H and r["method"] == key), None)
@@ -143,7 +157,7 @@ def run(horizons: List[int] | None = None) -> Dict:
     conclusion = ("；".join(lines) + "。合成数据的递减本身按 Arps 生成，长历史上经验 Arps 天然占优；"
                   "物理约束与类比先验的价值集中在历史短、外推远的井上。") if lines else "样本不足，未得出结论。"
     out = dict(horizons=horizons, q_econ=q_econ, n_library=int(sum(len(v) for v in lib_fits.values())),
-               priors={b: v for b, v in priors.items()}, table=table, conclusion=conclusion,
+               priors={b: v for b, v in priors.items()}, table=table, conclusion=conclusion, worst_overestimates=worst,
                truth_available=bool(truth), methods=METHODS)
     f = path("artifacts_dir") / "eval_dca.json"
     f.write_text(json.dumps(out, ensure_ascii=False, indent=2, default=float), encoding="utf-8")

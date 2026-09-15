@@ -16,9 +16,10 @@ from .features.build import build, encode, feature_columns
 from .labeling.labels import extract_all
 from .models.analog_retrieval import AnalogIndex, _resample_curve
 from .models.baseline_analog import AnalogBaseline
-from .models.attribution import global_shap
+from .models.attribution import global_shap, local_shap
 from .models.conformal import Conformal, calibrate
-from .models.ensemble import blend, choose_weights
+from .models.drift import DriftGuard
+from .models.ensemble import blend, select_and_crossfit
 from .models.gbdt_quantile import QuantileModel
 from .models.seq_model import SeqQuantileModel, sequence_tensor
 from .models import registry
@@ -105,6 +106,21 @@ def _calibrated(preds: Dict[str, pd.DataFrame], conf: Conformal) -> Dict[str, pd
     return out
 
 
+def _guarded(pred: Dict[str, pd.DataFrame], conf: Conformal, conf_fallback: Conformal,
+             off: np.ndarray) -> Dict[str, pd.DataFrame]:
+    """漂移井的融合权重已为 0（预测即梯度提升），区间也要用梯度提升自己的保形修正量。"""
+    a, b = _calibrated(pred, conf), _calibrated(pred, conf_fallback)
+    return {t: a[t].where(~pd.Series(off, index=a[t].index), b[t]) for t in a}
+
+
+def _rd(v, nd: int = 4):
+    try:
+        v = float(v)
+        return round(v, nd) if np.isfinite(v) else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _brief(m: Dict) -> Dict:
     return {k: (round(float(m[k]), 4) if isinstance(m.get(k), float) and np.isfinite(m[k]) else m.get(k))
             for k in ("n", "mae", "coverage", "interval_width")}
@@ -162,26 +178,32 @@ def run_training(obs_days: int | None = None, split_method: str | None = None,
         ps = seq_model.predict(seq_all[rows], X.loc[rows], index=rows) if seq_model is not None else None
         return pg, ps
 
-    # 校准集按投产时间交错对半：A 半选融合权重，B 半做保形校准 —— 选权重与校准不用同一批井
-    cal = idx["calib"]
-    if seq_model is not None and len(cal) >= 20:
-        cal_a, cal_b = cal[::2], cal[1::2]
-        pg_a, ps_a = family(cal_a)
-        blend_info = choose_weights(Y.loc[cal_a], pg_a, ps_a, targets)
-    else:
-        cal_a, cal_b, blend_info = cal[:0], cal, {}
-    weights = {t: float(blend_info.get(t, {}).get("weight", 0.0)) for t in targets}
+    # 输入漂移守卫：阈值取校准集 99% 分位，只看输入、不看标签；漂移井的序列权重置 0
+    guard = DriftGuard().fit(X.loc[idx["train"]], feat_cols).calibrate(X.loc[idx["calib"]]) \
+        if seq_model is not None and len(idx["calib"]) else None
 
-    # 保形校准：融合模型是线上口径；两个单模型各自校准一份，只为测试集上公平对比
+    def off_of(rows) -> np.ndarray:
+        return guard.assess(X.loc[rows])["flagged"].to_numpy() if guard is not None else np.zeros(len(rows), bool)
+
+    # 融合权重与保形校准（交叉拟合）：权重在全部校准井上选；每口校准井的一致性分数用另一半井选出的权重算，
+    # 于是全部校准井都参与保形校准，而没有一口井的标签参与决定它自己用的权重。
     alpha = mcfg["conformal_alpha"]
+    cal = idx["calib"]
     conf = Conformal(alpha=alpha)
     conf_family = {"gbdt": Conformal(alpha=alpha), "seq": Conformal(alpha=alpha)}
-    if len(cal_b):
-        pg_b, ps_b = family(cal_b)
-        for c, preds_b in ((conf, blend(pg_b, ps_b, weights)), (conf_family["gbdt"], pg_b), (conf_family["seq"], ps_b)):
-            for tgt, dfp in (preds_b or {}).items():
-                c.fit_target(tgt, Y.loc[cal_b, tgt].to_numpy(float),
+    blend_info, fold_weights, off_c = {}, {}, off_of(cal)
+    if len(cal):
+        pg_c, ps_c = family(cal)
+        if seq_model is not None and len(cal) >= 20:
+            blend_info, pb_c, fold_weights = select_and_crossfit(Y.loc[cal], pg_c, ps_c, targets,
+                                                                 cal[::2], cal[1::2], off=off_c)
+        else:
+            pb_c = pg_c
+        for c, preds_c in ((conf, pb_c), (conf_family["gbdt"], pg_c), (conf_family["seq"], ps_c)):
+            for tgt, dfp in (preds_c or {}).items():
+                c.fit_target(tgt, Y.loc[cal, tgt].to_numpy(float),
                              dfp["p10"].to_numpy(float), dfp["p90"].to_numpy(float))
+    weights = {t: float(blend_info.get(t, {}).get("weight", 0.0)) for t in targets}
 
     # 基线 A：邻井类比
     base = AnalogBaseline(targets=targets).fit(
@@ -190,12 +212,14 @@ def run_training(obs_days: int | None = None, split_method: str | None = None,
     # 测试集评估
     Xte, Yte = X.loc[idx["test"]], Y.loc[idx["test"]]
     pg_t, ps_t = family(idx["test"])
-    pred = blend(pg_t, ps_t, weights)
-    pred_cal = _calibrated(pred, conf)
+    off_t = off_of(idx["test"])
+    pred = blend(pg_t, ps_t, weights, off=off_t)
+    pred_cal = _guarded(pred, conf, conf_family["gbdt"], off_t)
     fam_cal = {"gbdt": _calibrated(pg_t, conf_family["gbdt"])}
     if ps_t is not None:
         fam_cal["seq"] = _calibrated(ps_t, conf_family["seq"])
         fam_cal["blend"] = pred_cal
+        fam_cal["blend_no_guard"] = _calibrated(blend(pg_t, ps_t, weights), conf)
     base_pred = base.predict(master.set_index("well_id").loc[Xte["well_id"]].reset_index())
     for k in base_pred:
         base_pred[k].index = Xte.index
@@ -213,14 +237,47 @@ def run_training(obs_days: int | None = None, split_method: str | None = None,
                            mae_gain_vs_baseline_pct=None if gain is None else round(gain, 1),
                            conformal_delta=round(conf.delta.get(tgt, 0.0), 4),
                            families={k: _brief(metrics_for(Yte[tgt], v[tgt])) for k, v in fam_cal.items() if tgt in v},
-                           seq_weight=weights.get(tgt, 0.0))
+                           seq_weight=weights.get(tgt, 0.0), n_drift_flagged=int(off_t.sum()))
+
+    # 失败样例：每个目标误差最大的测试井，附各模型预测、漂移判定与 SHAP 前三特征 —— 主动暴露边界
+    mi = master.set_index("well_id")
+    drift_t = guard.assess(Xte) if guard is not None else None
+    failure_cases = {}
+    for tgt in report:
+        y = Yte[tgt].to_numpy(float)
+        pc = pred_cal[tgt]
+        lo_, mid_, hi_ = (pc[c].to_numpy(float) for c in ("p10", "p50", "p90"))
+        err = np.where(np.isfinite(y), np.abs(mid_ - y), -1.0)
+        worst = []
+        for i in np.argsort(-err)[:8]:
+            if err[i] < 0:
+                break
+            ix, wid = Xte.index[i], Xte["well_id"].iloc[i]
+            d = drift_t.iloc[i] if drift_t is not None else None
+            sh = local_shap(model, Xte.loc[ix], tgt, 0.5, top_k=3)
+            worst.append(dict(
+                well_code=str(mi.loc[wid, "well_code_anon"]), block=str(mi.loc[wid, "block"]),
+                first_prod_date=str(mi.loc[wid, "first_prod_date"]), actual=_rd(y[i]),
+                p10=_rd(lo_[i]), p50=_rd(mid_[i]), p90=_rd(hi_[i]), abs_error=_rd(err[i]),
+                rel_error_pct=_rd(100 * err[i] / max(abs(y[i]), 1e-9), 1),
+                direction="高估" if mid_[i] > y[i] else "低估",
+                position="低于 P10" if y[i] < lo_[i] else "高于 P90" if y[i] > hi_[i] else "区间内",
+                gbdt_p50=_rd(pg_t[tgt]["p50"].iloc[i]),
+                seq_p50=_rd(ps_t[tgt]["p50"].iloc[i]) if ps_t is not None else None,
+                seq_weight_used=0.0 if off_t[i] else weights.get(tgt, 0.0),
+                drift=None if d is None else dict(flagged=bool(d["flagged"]), score=_rd(d["score"], 2),
+                                                  top_feature=d["top_feature"], novel_category=bool(d["novel_category"])),
+                shap_top=sh["contributions"]))
+        ok = np.isfinite(y)
+        failure_cases[tgt] = dict(worst=worst, n=int(ok.sum()),
+                                  below_p10=int((ok & (y < lo_)).sum()), above_p90=int((ok & (y > hi_)).sum()))
 
     analog = AnalogIndex(feature_cols=feat_cols, obs_days=obs_days).fit(
         X[X["well_id"].isin(tr_ids)], prod[prod["well_id"].isin(tr_ids)], train_labels)
 
     version = registry.make_version()
     bundle = dict(model=model, conformal=conf, baseline=base, analog=analog,
-                  seq_model=seq_model, blend_weights=weights, blend_selection=blend_info,
+                  seq_model=seq_model, blend_weights=weights, blend_selection=blend_info, drift_guard=guard,
                   conformal_family=conf_family, global_shap=global_shap(model, X),
                   feature_cols=feat_cols, obs_days=obs_days,
                   train_labels=train_labels, train_ids=tr_ids,
@@ -230,8 +287,16 @@ def run_training(obs_days: int | None = None, split_method: str | None = None,
                             split_method=split_method,
                             seq=None if seq_model is None else dict(
                                 history=seq_model.history, n_seeds=seq_model.n_seeds, channels=len(seq_all[0]),
-                                n_calib_blend=int(len(cal_a)), n_calib_conformal=int(len(cal_b)),
-                                weights=weights),
+                                n_calib_blend=int((~off_c).sum()), n_calib_conformal=int(len(cal)),
+                                calibration="交叉拟合：权重在全部校准井上选，一致性分数用另一半井选出的权重计算",
+                                weights=weights, fold_weights=fold_weights,
+                                drift=None if guard is None else dict(
+                                    threshold=round(guard.threshold, 4), quantile=guard.quantile,
+                                    n_flagged_calib=int(off_c.sum()), n_flagged_test=int(off_t.sum()), n_test=int(len(off_t)),
+                                    top_features_test=(drift_t[drift_t["flagged"]]["top_feature"].value_counts().head(5).to_dict()
+                                                       if drift_t is not None else {}),
+                                    n_novel_category_test=int(drift_t["novel_category"].sum()) if drift_t is not None else 0)),
+                            failure_cases=failure_cases,
                             n_train=len(tr_ids), n_calib=len(cal_ids), n_test=len(te_ids),
                             n_eligible=len(elig), n_wells_total=len(master),
                             min_lifecycle_days=MIN_LIFECYCLE_DAYS,
