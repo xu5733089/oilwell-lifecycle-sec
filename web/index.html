@@ -25,12 +25,14 @@
   --shadow:0 1px 2px rgba(16,27,45,.06);
   --shadow-pop:0 6px 24px -6px rgba(16,27,45,.22);
   --side-w:220px; --nav-active:#1F5BB8;
+  /* 顺序色（量级）：单一色相由浅到深，井位图"累产 / 投产年份"着色用 */
+  --seq:#C9DBF2,#8FB5E6,#5689D0,#2D63B0,#173F7C;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
   --bg:#0B111A; --surface:#141B26; --surface-2:#19212E; --sunk:#111823;
   --ink:#E3E8EF; --ink-2:#B8C2D0; --muted:#8A95A6; --rule:#283243; --rule-soft:#1F2835;
   --brand:#5B8FE0; --brand-hover:#77A3E8; --brand-soft:#1A2940; --brand-ink:#8DB3EE;
-  --side:#080D15; --side-2:#131C2B; --side-ink:#C5CEDB; --side-muted:#707D92; --side-rule:#172133; --nav-active:#2A5AA8;
+  --side:#080D15; --side-2:#131C2B; --side-ink:#C5CEDB; --side-muted:#707D92; --side-rule:#172133; --nav-active:#2A5AA8; --seq:#1F3050,#2A5591,#3F7CC8,#74A8E6,#B9D6F8;
   /* dark 模式单独选步，不是自动翻转 */
   --c1:#19A492; --c2:#D2731F; --c3:#5468C4; --c4:#D0679B;
   --c1-soft:#2F6F66;
@@ -44,7 +46,7 @@
   --bg:#0B111A; --surface:#141B26; --surface-2:#19212E; --sunk:#111823;
   --ink:#E3E8EF; --ink-2:#B8C2D0; --muted:#8A95A6; --rule:#283243; --rule-soft:#1F2835;
   --brand:#5B8FE0; --brand-hover:#77A3E8; --brand-soft:#1A2940; --brand-ink:#8DB3EE;
-  --side:#080D15; --side-2:#131C2B; --side-ink:#C5CEDB; --side-muted:#707D92; --side-rule:#172133; --nav-active:#2A5AA8;
+  --side:#080D15; --side-2:#131C2B; --side-ink:#C5CEDB; --side-muted:#707D92; --side-rule:#172133; --nav-active:#2A5AA8; --seq:#1F3050,#2A5591,#3F7CC8,#74A8E6,#B9D6F8;
   --c1:#19A492; --c2:#D2731F; --c3:#5468C4; --c4:#D0679B;
   --c1-soft:#2F6F66;
   --neutral:#566070; --neutral-2:#8A95A5;
@@ -225,11 +227,11 @@ dl.kv dd{margin:0;padding:7px 0;border-bottom:1px solid var(--rule-soft);font-va
 dl.kv dt:nth-last-of-type(1),dl.kv dd:last-child{border-bottom:0}
 
 /* ── 子页签 ── */
-.subtabs{display:flex;gap:2px;border-bottom:1px solid var(--rule);margin:0 0 16px;overflow-x:auto}
+.subtabs{position:relative;display:flex;gap:2px;border-bottom:1px solid var(--rule);margin:0 0 16px;overflow-x:auto}
 .subtabs button{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;color:var(--muted);height:38px;
   padding:0 14px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
 .subtabs button:hover{color:var(--ink)}
-.subtabs button[aria-selected="true"]{color:var(--brand);border-bottom-color:var(--brand);font-weight:600}
+.subtabs button[aria-selected="true"]{color:var(--brand);font-weight:600}
 .subtabs .cnt{display:inline-block;margin-left:5px;padding:0 6px;border-radius:9px;background:var(--surface-2);border:1px solid var(--rule-soft);
   font-size:11px;color:var(--muted);font-weight:400;line-height:16px}
 
@@ -245,7 +247,8 @@ figcaption{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
 .legend i.dot{height:9px;width:9px;border-radius:50%}
 .tip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--rule);
   border-radius:5px;padding:7px 10px;font-size:12px;box-shadow:var(--shadow-pop);z-index:60;
-  opacity:0;transition:opacity .08s;max-width:280px}
+  opacity:0;transform:translateY(4px);transition:opacity .14s,transform .16s cubic-bezier(.22,1,.36,1);max-width:280px}
+.tip.on{opacity:1;transform:none}
 .tip b{font-weight:600}
 .tip .row{display:flex;gap:10px;justify-content:space-between}
 .tip .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px}
@@ -293,13 +296,96 @@ figcaption{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
 .terr{font-size:12px;color:var(--crit)}
 
 /* ── 状态 ── */
-.busy{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--muted);font-size:12.5px;padding:48px 16px;text-align:center}
-.busy::before{content:"";width:16px;height:16px;border-radius:50%;border:2px solid var(--rule);border-top-color:var(--brand);
+.busy.compact{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--muted);font-size:12.5px;padding:28px 16px;text-align:center}
+.busy-text{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12.5px;margin:0 0 12px}
+.busy.compact::before,.busy-text::before{content:"";width:16px;height:16px;border-radius:50%;border:2px solid var(--rule);border-top-color:var(--brand);
   animation:spin .8s linear infinite;flex:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty{color:var(--muted);font-size:12.5px;padding:28px 16px;text-align:center}
 .err{color:var(--crit);font-size:12.5px}
 .muted{color:var(--muted)}
+
+/* ── 动效：只动 transform / opacity；系统开启"减少动态效果"时全部关闭 ── */
+:root{--ease-out:cubic-bezier(.22,1,.36,1)}
+.rv{animation:rise .46s var(--ease-out) both;animation-delay:calc(min(var(--i,0),10) * 50ms)}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes drop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.pnote:not([hidden]){animation:drop .22s var(--ease-out)}
+.panel>.pb:not([hidden]){animation:fade .28s ease-out}
+.btn,.seg button,.ibtn,.iconbtn,.nav a,.qlist button,.subtabs button{transition:background-color .15s,border-color .15s,color .15s,transform .1s}
+.btn:active:not(:disabled),.iconbtn:active,.seg button:active{transform:scale(.97)}
+a.btn{text-decoration:none}
+.dt td{transition:background-color .12s}
+.panel{transition:box-shadow .2s}
+.panel:hover{box-shadow:0 2px 12px -4px rgba(16,27,45,.16)}
+.subtabs .ink{position:absolute;left:0;bottom:0;height:2px;width:0;border-radius:2px;background:var(--brand);
+  transition:transform .3s var(--ease-out),width .3s var(--ease-out)}
+.ctx-sep{width:1px;height:20px;background:var(--rule)}
+.btn .spin{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .7s linear infinite}
+/* 图表首绘：柱从基线长出、点弹出、线从左向右展开（由 introOnce 挂上 .anim，播完移除） */
+.anim .a-up,.anim .a-down,.anim .a-right,.anim .a-left,.anim .a-pop{transform-box:fill-box;
+  animation-duration:.62s;animation-timing-function:var(--ease-out);animation-fill-mode:both;animation-delay:var(--d,0ms)}
+.anim .a-up{animation-name:growY;transform-origin:50% 100%}
+.anim .a-down{animation-name:growY;transform-origin:50% 0}
+.anim .a-right{animation-name:growX;transform-origin:0 50%}
+.anim .a-left{animation-name:growX;transform-origin:100% 50%}
+.anim .a-pop{animation-name:pop;animation-duration:.5s;transform-origin:50% 50%}
+.anim .a-fade{animation:fade .6s ease-out both;animation-delay:var(--d,0ms)}
+@keyframes growY{from{transform:scaleY(0)}to{transform:none}}
+@keyframes growX{from{transform:scaleX(0)}to{transform:none}}
+@keyframes pop{0%{transform:scale(0);opacity:0}65%{transform:scale(1.25);opacity:1}100%{transform:none;opacity:1}}
+/* 骨架屏 */
+.sk{display:block;height:10px;border-radius:4px;background:linear-gradient(90deg,var(--surface-2) 25%,var(--rule-soft) 50%,var(--surface-2) 75%);
+  background-size:200% 100%;animation:shimmer 1.4s linear infinite}
+@keyframes shimmer{from{background-position:150% 0}to{background-position:-50% 0}}
+.sk-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--rule-soft);
+  border:1px solid var(--rule);border-radius:6px;overflow:hidden;margin-bottom:16px}
+.sk-kpi{background:var(--surface);padding:14px 16px;display:grid;gap:9px}
+.sk.w30{width:30%}.sk.w40{width:40%}.sk.w55{width:55%}.sk.w70{width:70%}.sk.tall{height:20px}.sk.area{height:240px;border-radius:6px}
+.sk-row{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px}
+.sk-panel{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;display:grid;gap:14px}
+@media(max-width:900px){.sk-row{grid-template-columns:minmax(0,1fr)}}
+/* 消息提示 */
+.toasts{position:fixed;right:20px;bottom:20px;z-index:80;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:none}
+.toast{display:flex;align-items:center;gap:8px;max-width:min(440px,calc(100vw - 40px));padding:10px 14px;border-radius:6px;background:var(--surface);
+  border:1px solid var(--rule);box-shadow:var(--shadow-pop);font-size:12.5px;color:var(--ink);pointer-events:auto;animation:toastIn .3s var(--ease-out) both}
+.toast svg.ic{color:var(--ok)}
+.toast.crit svg.ic{color:var(--crit)}
+.toast.out{animation:toastOut .2s ease-in forwards}
+@keyframes toastIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes toastOut{to{opacity:0;transform:translateY(6px)}}
+
+/* ── 井位图 ── */
+.wmap{position:relative}
+.wmap>svg{touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.wmap>svg.dragging{cursor:grabbing}
+.wmap .dot{transition:fill .5s ease,opacity .35s ease;cursor:pointer}
+.wmap .dot:hover{stroke:var(--ink);stroke-width:2px}
+.wmap .dim{opacity:.1}
+.wmap .hull{transition:opacity .35s ease}
+.wmap .hull.dim{opacity:.18}
+.wmap .pulse{transform-box:fill-box;transform-origin:center;animation:pulse 1.8s ease-out infinite;pointer-events:none}
+@keyframes pulse{from{transform:scale(1);opacity:.7}to{transform:scale(3.2);opacity:0}}
+.wmap .zoom{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;border:1px solid var(--rule);border-radius:5px;
+  overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
+.wmap .zoom button{width:30px;height:30px;display:grid;place-items:center;border:0;background:var(--surface);color:var(--ink-2);cursor:pointer;
+  transition:background-color .15s,color .15s}
+.wmap .zoom button+button{border-top:1px solid var(--rule-soft)}
+.wmap .zoom button:hover{color:var(--brand);background:var(--brand-soft)}
+.wmap .hint{position:absolute;left:50%;top:12px;transform:translate(-50%,-6px);opacity:0;pointer-events:none;background:var(--ink);color:var(--surface);
+  font-size:12px;padding:5px 10px;border-radius:4px;transition:opacity .2s,transform .2s var(--ease-out);white-space:nowrap}
+.wmap .hint.on{opacity:.92;transform:translate(-50%,0)}
+@media(max-width:520px){.wmap .zoom{top:auto;bottom:40px;flex-direction:row}.wmap .zoom button+button{border-top:0;border-left:1px solid var(--rule-soft)}}
+.mlegend{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;margin-bottom:8px;font-size:12px;color:var(--ink-2);min-height:26px}
+.mlegend button{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border:1px solid var(--rule-soft);border-radius:12px;background:var(--surface);
+  color:var(--ink-2);font:inherit;cursor:pointer;transition:background-color .15s,border-color .15s,opacity .2s,color .15s}
+.mlegend button:hover{border-color:var(--rule);background:var(--surface-2)}
+.mlegend button[aria-pressed="true"]{background:var(--brand-soft);border-color:transparent;color:var(--brand-ink)}
+.mlegend button.off{opacity:.5}
+.mlegend .dotk{width:9px;height:9px;border-radius:50%}
+.mlegend .ramp{width:120px;height:8px;border-radius:4px}
+.mlegend .muted{font-size:11.5px}
 
 /* ── 窄屏：侧栏变为顶部横向导航 ── */
 @media(max-width:900px){
@@ -416,16 +502,17 @@ const svgText = (attrs, text) => { const t = s_('text', attrs); t.textContent = 
 const tip = $('#tip');
 function showTip(evt, html) {
   tip.innerHTML = html;
-  tip.style.opacity = '1';
+  tip.classList.add('on');
   const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
   let x = evt.clientX + pad, y = evt.clientY + pad;
   if (x + w > innerWidth - 8) x = evt.clientX - w - pad;
   if (y + h > innerHeight - 8) y = evt.clientY - h - pad;
   tip.style.left = x + 'px'; tip.style.top = y + 'px';
 }
-const hideTip = () => { tip.style.opacity = '0'; };
+const hideTip = () => { tip.classList.remove('on'); };
 
 const FS = { tick: 11, label: 12, note: 10.5 };
+const MOTION = !matchMedia('(prefers-reduced-motion: reduce)').matches;
 /* 数值紧凑写法：图上刻度用，精确值在提示框和表格视图里 */
 const compactT = v => Math.abs(v) >= 1e4 ? fmt(v / 1e4, 1) + '万' : fmt(v, 0);
 const fmtT = v => (v === null || v === undefined) ? '—'
@@ -436,13 +523,41 @@ const _ro = 'ResizeObserver' in window ? new ResizeObserver(entries => entries.f
   const host = e.target;
   if (!host.isConnected) { _ro.unobserve(host); return; }
   const w = Math.floor(e.contentRect.width);
-  if (w > 0 && w !== host._w) { host._w = w; host.innerHTML = ''; hideTip(); host._draw(w); }
+  if (w > 0 && w !== host._w) { host._w = w; host.innerHTML = ''; hideTip(); host._draw(w); introOnce(host); }
 })) : null;
 function mount(host, draw) {
   host.innerHTML = '';
-  host._draw = draw; host._w = 0;
+  host._draw = draw; host._w = 0; host._intro = MOTION;
   if (_ro) _ro.observe(host);
-  else requestAnimationFrame(() => draw(Math.floor(host.clientWidth) || 760));
+  else requestAnimationFrame(() => { draw(Math.floor(host.clientWidth) || 760); introOnce(host); });
+}
+
+/* 首绘入场动画：柱从基线长出、点弹出、线与区间带从左向右展开。
+   只在第一次绘制时播放 —— 容器尺寸变化引起的重画不再重播；系统要求减少动态效果时不播。 */
+let _clipSeq = 0;
+function introOnce(host) {
+  if (!host._intro) return;
+  host._intro = false;
+  const svg = host.querySelector(':scope > svg');
+  if (!svg) return;
+  svg.classList.add('anim');
+  const clips = svg.querySelectorAll('.a-clip');
+  if (clips.length) {
+    const vb = svg.viewBox.baseVal, id = 'reveal' + (++_clipSeq);
+    const rect = s_('rect', { x: 0, y: -40, width: 0, height: vb.height + 80 });
+    const cp = s_('clipPath', { id }), defs = s_('defs');
+    cp.appendChild(rect); defs.appendChild(cp); svg.insertBefore(defs, svg.firstChild);
+    clips.forEach(c => c.setAttribute('clip-path', `url(#${id})`));
+    const t0 = performance.now(), dur = 950;
+    const step = now => {
+      const k = Math.min(1, (now - t0) / dur);
+      rect.setAttribute('width', vb.width * (1 - Math.pow(1 - k, 3)));
+      if (k < 1) requestAnimationFrame(step);
+      else { clips.forEach(c => c.removeAttribute('clip-path')); defs.remove(); }
+    };
+    requestAnimationFrame(step);
+  }
+  setTimeout(() => svg.classList.remove('anim'), 2400);
 }
 const svgX = (svg, ev, W) => { const r = svg.getBoundingClientRect(); return (ev.clientX - r.left) * (W / (r.width || W)); };
 
@@ -517,7 +632,7 @@ function lineChart(host, cfg) {
     if (cfg.band && cfg.band.length) {
       const up = cfg.band.map(p => `${X(p.x)},${Y(p.hi)}`).join(' ');
       const dn = cfg.band.slice().reverse().map(p => `${X(p.x)},${Y(p.lo)}`).join(' ');
-      svg.appendChild(s_('polygon', { points: up + ' ' + dn, fill: cfg.bandColor || cssVar('--c1'), 'fill-opacity': .16 }));
+      svg.appendChild(s_('polygon', { class: 'a-clip', points: up + ' ' + dn, fill: cfg.bandColor || cssVar('--c1'), 'fill-opacity': .16 }));
     }
     if (cfg.hline) {
       const y = Y(cfg.hline.y);
@@ -534,16 +649,16 @@ function lineChart(host, cfg) {
       if (!pts.length) return;
       svg.appendChild(s_('polyline', {
         points: pts.map(p => `${X(p.x)},${Y(p.y)}`).join(' '), fill: 'none',
-        stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+        class: 'a-clip', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
         'stroke-dasharray': s.dashed ? '6 4' : null
       }));
       if (s.dots) pts.forEach(p => svg.appendChild(s_('circle', {
-        cx: X(p.x), cy: Y(p.y), r: 4, fill: s.color, stroke: cssVar('--surface'), 'stroke-width': 2
+        class: 'a-clip', cx: X(p.x), cy: Y(p.y), r: 4, fill: s.color, stroke: cssVar('--surface'), 'stroke-width': 2
       })));
     });
     (cfg.markers || []).forEach(m => {
-      svg.appendChild(s_('circle', { cx: X(m.x), cy: Y(m.y), r: 5, fill: 'none', stroke: m.color, 'stroke-width': 2 }));
-      svg.appendChild(svgText({ x: X(m.x) + 9, y: Y(m.y) - 8, fill: cssVar('--ink-2'), 'font-size': FS.note }, m.label));
+      svg.appendChild(s_('circle', { class: 'a-pop', style: '--d:950ms', cx: X(m.x), cy: Y(m.y), r: 5, fill: 'none', stroke: m.color, 'stroke-width': 2 }));
+      svg.appendChild(svgText({ class: 'a-fade', style: '--d:1050ms', x: X(m.x) + 9, y: Y(m.y) - 8, fill: cssVar('--ink-2'), 'font-size': FS.note }, m.label));
     });
     const cross = s_('line', { y1: pad.t, y2: pad.t + ih, stroke: cssVar('--rule'), 'stroke-width': 1, opacity: 0 });
     svg.appendChild(cross);
@@ -580,9 +695,9 @@ function divergingBars(host, rows, unit, opts = {}) {
     rows.forEach((r, i) => {
       const y = i * rowH + 2, cy = y + rowH / 2, bw = Math.max(Math.abs(r.value) / max * half, 1.5);
       const pos = r.value >= 0, color = opts.color || (pos ? cssVar('--c1') : cssVar('--c2'));
-      svg.appendChild(s_('path', { d: barPath(pos ? zero : zero - bw, cy - 6, bw, 12, pos ? 'right' : 'left'), fill: color }));
+      svg.appendChild(s_('path', { class: pos ? 'a-right' : 'a-left', style: `--d:${i * 45}ms`, d: barPath(pos ? zero : zero - bw, cy - 6, bw, 12, pos ? 'right' : 'left'), fill: color }));
       svg.appendChild(svgText({ x: labelW - 10, y: cy + 4, 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': FS.label }, r.label));
-      svg.appendChild(svgText({ x: pos ? zero + bw + 6 : zero - bw - 6, y: cy + 4, 'text-anchor': pos ? 'start' : 'end', fill: cssVar('--muted'), 'font-size': FS.note },
+      svg.appendChild(svgText({ class: 'a-fade', style: `--d:${i * 45 + 320}ms`, x: pos ? zero + bw + 6 : zero - bw - 6, y: cy + 4, 'text-anchor': pos ? 'start' : 'end', fill: cssVar('--muted'), 'font-size': FS.note },
         (r.value > 0 ? '+' : '') + fmt(r.value, 2) + (opts.suffix || '')));
       const hit = s_('rect', { x: 0, y, width: W, height: rowH, fill: 'transparent' });
       hit.addEventListener('mousemove', ev => showTip(ev, opts.tip ? opts.tip(r) :
@@ -610,7 +725,7 @@ function histogram(host, values, refs, xLabel) {
     const { svg } = g;
     bins.forEach((c, i) => {
       const x0 = X(lo + i * step), x1 = X(lo + (i + 1) * step);
-      const r = s_('rect', { x: x0 + 1, y: Y(c), width: Math.max(x1 - x0 - 2, 1), height: Math.max(g.pad.t + g.ih - Y(c), 0), fill: cssVar('--c1'), 'fill-opacity': .8, rx: 2 });
+      const r = s_('rect', { class: 'a-up', style: `--d:${i * 22}ms`, x: x0 + 1, y: Y(c), width: Math.max(x1 - x0 - 2, 1), height: Math.max(g.pad.t + g.ih - Y(c), 0), fill: cssVar('--c1'), 'fill-opacity': .8, rx: 2 });
       svg.appendChild(r);
       r.addEventListener('mousemove', ev => showTip(ev,
         `<b>${fmt(lo + i * step, 0)} ~ ${fmt(lo + (i + 1) * step, 0)}</b><div class="row"><span>样本数</span><span class="mono">${c}</span></div>`));
@@ -618,41 +733,260 @@ function histogram(host, values, refs, xLabel) {
     });
     (refs || []).forEach(r => {
       if (!Number.isFinite(r.x)) return;
-      svg.appendChild(s_('line', { x1: X(r.x), x2: X(r.x), y1: g.pad.t, y2: g.pad.t + g.ih, stroke: cssVar('--c2'), 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }));
-      svg.appendChild(svgText({ x: X(r.x), y: g.pad.t - 6, 'text-anchor': 'middle', fill: cssVar('--ink-2'), 'font-size': FS.note }, r.label));
+      svg.appendChild(s_('line', { class: 'a-fade', style: '--d:650ms', x1: X(r.x), x2: X(r.x), y1: g.pad.t, y2: g.pad.t + g.ih, stroke: cssVar('--c2'), 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }));
+      svg.appendChild(svgText({ class: 'a-fade', style: '--d:700ms', x: X(r.x), y: g.pad.t - 6, 'text-anchor': 'middle', fill: cssVar('--ink-2'), 'font-size': FS.note }, r.label));
     });
     host.appendChild(svg);
   });
 }
 
-/* 井位散点：颜色=区块（分类），大小=累产（量级） */
-function scatter(host, pts, colorKey, colors, onPick) {
+/* 井位图：等比例投影（东西、南北同一比例尺）+ 区块范围 + 缩放平移 + 三种着色。
+   交互：拖动平移、双击放大、⌘/Ctrl + 滚轮（触控板双指）缩放；点区块图例聚焦该区块，点井进入单井。
+   颜色按"工作"分：区块 = 分类色；累产 / 投产年份 = 单一色相顺序色（量级）。 */
+const _hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+function rampColor(t) {
+  const stops = cssVar('--seq').split(',').map(x => _hex(x.trim()));
+  const k = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0)) * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(k)), f = k - i;
+  return `rgb(${stops[i].map((v, j) => Math.round(v + (stops[i + 1][j] - v) * f)).join(',')})`;
+}
+function convexHull(points) {
+  const p = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [], upper = [];
+  for (const q of p) { while (lower.length >= 2 && cross(lower.at(-2), lower.at(-1), q) <= 0) lower.pop(); lower.push(q); }
+  for (const q of p.slice().reverse()) { while (upper.length >= 2 && cross(upper.at(-2), upper.at(-1), q) <= 0) upper.pop(); upper.push(q); }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
+function wellMap(host, cfg) {
+  const st = { mode: cfg.mode || 'block', focus: null, view: null, hi: null };
+  const wells = cfg.wells.filter(w => Number.isFinite(w.x) && Number.isFinite(w.y));
+  const api = { setMode: m => { st.mode = m; }, focus: b => { st.focus = b; }, highlight: c => { st.hi = c; } };
+  host.classList.add('wmap');
+  if (!wells.length) { show(host, el('div', { class: 'empty', text: '没有可显示的井位' })); return api; }
+  const blocks = [...new Set(wells.map(w => w.block))].sort();
+  const yearOf = w => +String(w.first_prod_date).slice(0, 4);
+  const years = wells.map(yearOf).filter(Number.isFinite);
+  const yr = [Math.min(...years), Math.max(...years)];
+  const cumS = wells.map(w => Math.sqrt(Math.max(w.cum_oil_t || 0, 0)));
+  const cr = [Math.min(...cumS), Math.max(...cumS)];
+  const cmax = Math.max(...wells.map(w => w.cum_oil_t || 0)) || 1;
+  const fillOf = (w, i) => st.mode === 'cum' ? rampColor((cumS[i] - cr[0]) / (cr[1] - cr[0] || 1))
+    : st.mode === 'year' ? rampColor((yearOf(w) - yr[0]) / (yr[1] - yr[0] || 1))
+    : (cfg.colors[w.block] || cssVar('--muted'));
+
+  function drawLegend() {
+    const lg = cfg.legendHost;
+    if (!lg) return;
+    if (st.mode === 'block') {
+      lg.replaceChildren(...blocks.map(b => {
+        const btn = el('button', { type: 'button', 'aria-pressed': String(st.focus === b), class: st.focus && st.focus !== b ? 'off' : null,
+          title: st.focus === b ? '取消聚焦' : `聚焦 ${b}` },
+          [el('i', { class: 'dotk', style: `background:${cfg.colors[b] || cssVar('--muted')}` }), `${b}　${wells.filter(w => w.block === b).length} 口`]);
+        btn.addEventListener('click', () => api.focus(st.focus === b ? null : b));
+        return btn;
+      }), el('span', { class: 'muted', text: '大小 = 累产 · 深色描边 = 新井' }));
+    } else {
+      const grad = `linear-gradient(90deg,${[0, .25, .5, .75, 1].map(rampColor).join(',')})`;
+      const isCum = st.mode === 'cum';
+      lg.replaceChildren(el('span', { text: isCum ? '累产油' : '投产年份' }),
+        el('span', { class: 'muted', text: isCum ? '0' : String(yr[0]) }), el('i', { class: 'ramp', style: `background:${grad}` }),
+        el('span', { class: 'muted', text: isCum ? compactT(cmax) + ' t' : String(yr[1]) }),
+        el('span', { class: 'muted', text: isCum ? '颜色越深累产越高（按平方根分级）' : '颜色越深投产越晚' }));
+    }
+  }
+
   mount(host, W => {
-    const g = frame(W, W < 520 ? 300 : 400, { l: 58, r: 16, t: 14, b: 42 });
-    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
-    const pad = v => (Math.max(...v) - Math.min(...v)) * .06 || 1;
-    const { X, Y } = axes(g, [Math.min(...xs) - pad(xs), Math.max(...xs) + pad(xs)],
-      [Math.min(...ys) - pad(ys), Math.max(...ys) + pad(ys)],
-      '相对东西向 (m，坐标已偏移)', '相对南北向 (m)', t => fmt(t / 1000, 1) + 'k', t => fmt(t, 0));
-    const cmax = Math.max(...pts.map(p => p.size || 0)) || 1, rmax = W < 520 ? 5 : 7;
-    pts.forEach(p => {
-      const r = 3 + Math.sqrt((p.size || 0) / cmax) * rmax;
-      const n = s_('circle', {
-        cx: X(p.x), cy: Y(p.y), r, fill: colors[p[colorKey]] || cssVar('--muted'), 'fill-opacity': p.is_new ? .95 : .5,
-        stroke: p.is_new ? cssVar('--ink') : cssVar('--surface'), 'stroke-width': p.is_new ? 1.4 : 1, style: 'cursor:pointer'
-      });
-      n.addEventListener('mousemove', ev => showTip(ev,
-        `<b>${p.well_code}</b>　<span class="mono">${p.block} ${p.layer}</span>` +
-        `<div class="row"><span>投产</span><span class="mono">${p.first_prod_date}</span></div>` +
-        `<div class="row"><span>累产油</span><span class="mono">${fmt(p.cum_oil_t, 0)} t</span></div>` +
-        `<div class="row"><span>生产历史</span><span class="mono">${p.history_days} d</span></div>` +
-        (p.is_new ? '<div style="margin-top:4px;color:var(--c2)">新井 · 尚未走完生命周期</div>' : '')));
-      n.addEventListener('mouseleave', hideTip);
-      n.addEventListener('click', () => onPick && onPick(p.well_code));
-      g.svg.appendChild(n);
+    const H = W < 520 ? 320 : 440, pad = { l: 46, r: 12, t: 10, b: 30 };
+    const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    const xs = wells.map(w => w.x), ys = wells.map(w => w.y);
+    const ext = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const full = { cx: (ext[0] + ext[1]) / 2, cy: (ext[2] + ext[3]) / 2,
+      s: Math.min(iw / ((ext[1] - ext[0]) * 1.12 || 1), ih / ((ext[3] - ext[2]) * 1.25 || 1)) };
+    let v = st.view ? { ...st.view } : { ...full };
+    const PX = x => pad.l + iw / 2 + (x - v.cx) * v.s, PY = y => pad.t + ih / 2 - (y - v.cy) * v.s;
+    const svg = s_('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': '井位分布图' });
+    const clipId = 'mapclip' + (++_clipSeq), defs = s_('defs'), cp = s_('clipPath', { id: clipId });
+    cp.appendChild(s_('rect', { x: pad.l, y: pad.t, width: iw, height: ih })); defs.appendChild(cp);
+    const gGrid = s_('g'), gData = s_('g', { 'clip-path': `url(#${clipId})` }), gAxis = s_('g');
+    const gHull = s_('g'), gDots = s_('g'), gMark = s_('g');
+    gData.append(gHull, gDots, gMark);
+    svg.append(defs, s_('rect', { x: pad.l, y: pad.t, width: iw, height: ih, rx: 4, fill: cssVar('--surface-2') }), gGrid, gData, gAxis);
+
+    const hulls = blocks.map((b, k) => {
+      const color = cfg.colors[b] || cssVar('--muted');
+      const hp = convexHull(wells.filter(w => w.block === b).map(w => [w.x, w.y]));
+      const path = s_('path', { class: 'hull a-fade', style: `--d:${k * 120}ms`, fill: color, 'fill-opacity': .08, stroke: color,
+        'stroke-opacity': .14, 'stroke-width': 26, 'stroke-linejoin': 'round' });
+      const label = svgText({ class: 'hull a-fade', style: `--d:${k * 120 + 500}ms`, 'text-anchor': 'middle', fill: cssVar('--ink-2'),
+        'font-size': 12, 'font-weight': 600, 'paint-order': 'stroke', stroke: cssVar('--surface-2'), 'stroke-width': 4, 'stroke-linejoin': 'round' },
+        `${b} · ${wells.filter(w => w.block === b).length} 口`);
+      gHull.append(path, label);
+      return { b, hp, path, label };
     });
-    host.appendChild(g.svg);
+
+    const rmax = W < 520 ? 5 : 7;
+    const rank = new Array(wells.length);
+    wells.map((w, i) => i).sort((p, q) => wells[p].x - wells[q].x).forEach((idx, k) => { rank[idx] = k; });
+    let dragMoved = false;
+    const tipHtml = w => `<b>${w.well_code}</b>　<span class="mono">${w.block} ${w.layer}</span>` +
+      `<div class="row"><span>投产</span><span class="mono">${w.first_prod_date}</span></div>` +
+      `<div class="row"><span>累产油</span><span class="mono">${fmt(w.cum_oil_t, 0)} t</span></div>` +
+      `<div class="row"><span>生产历史</span><span class="mono">${w.history_days} d</span></div>` +
+      `<div style="margin-top:4px;color:var(--muted)">${w.is_new ? '新井 · 尚未走完生命周期 · ' : ''}点击进入单井分析</div>`;
+    const dots = wells.map((w, i) => {
+      const c = s_('circle', { class: 'dot a-pop', r: 2.6 + Math.sqrt((w.cum_oil_t || 0) / cmax) * rmax,
+        'stroke-width': w.is_new ? 1.4 : 1, style: `--d:${Math.round(rank[i] / wells.length * 800) + 250}ms` });
+      c.addEventListener('mousemove', ev => { if (!dragMoved) showTip(ev, tipHtml(w)); });
+      c.addEventListener('mouseleave', hideTip);
+      c.addEventListener('click', () => { if (!dragMoved && cfg.onPick) cfg.onPick(w.well_code); });
+      gDots.appendChild(c);
+      return c;
+    });
+
+    const ring = s_('circle', { class: 'pulse', r: 8, fill: 'none', stroke: cssVar('--brand'), 'stroke-width': 2 });
+    const core = s_('circle', { r: 6, fill: 'none', stroke: cssVar('--brand'), 'stroke-width': 2.4 });
+    const mlabel = svgText({ 'font-size': 11.5, 'font-weight': 600, fill: cssVar('--ink'), 'paint-order': 'stroke',
+      stroke: cssVar('--surface'), 'stroke-width': 4, 'stroke-linejoin': 'round' }, '');
+    gMark.append(ring, core, mlabel);
+
+    function placeMark() {
+      const code = st.hi || cfg.current, i = wells.findIndex(w => w.well_code === code);
+      [ring, core, mlabel].forEach(n => { n.style.display = i < 0 ? 'none' : ''; });
+      if (i < 0) return;
+      const x = PX(wells[i].x), y = PY(wells[i].y), right = x < pad.l + iw - 140;
+      [ring, core].forEach(n => { n.setAttribute('cx', x); n.setAttribute('cy', y); });
+      mlabel.textContent = (st.hi && st.hi !== cfg.current ? '' : '当前井 ') + code;
+      mlabel.setAttribute('x', right ? x + 12 : x - 12); mlabel.setAttribute('y', y - 10);
+      mlabel.setAttribute('text-anchor', right ? 'start' : 'end');
+    }
+
+    function render() {
+      const vx0 = v.cx - iw / 2 / v.s, vx1 = v.cx + iw / 2 / v.s, vy0 = v.cy - ih / 2 / v.s, vy1 = v.cy + ih / 2 / v.s;
+      gGrid.replaceChildren(); gAxis.replaceChildren();
+      ticks(vx0, vx1, Math.max(3, Math.floor(iw / 110))).forEach(t => {
+        const x = PX(t);
+        if (x < pad.l || x > pad.l + iw) return;
+        gGrid.appendChild(s_('line', { x1: x, x2: x, y1: pad.t, y2: pad.t + ih, stroke: cssVar('--rule-soft'), 'stroke-width': 1 }));
+        gAxis.appendChild(svgText({ x, y: pad.t + ih + 16, 'text-anchor': 'middle', fill: cssVar('--muted'), 'font-size': FS.tick }, fmt(t / 1000, 1)));
+      });
+      ticks(vy0, vy1, Math.max(3, Math.floor(ih / 70))).forEach(t => {
+        const y = PY(t);
+        if (y < pad.t || y > pad.t + ih) return;
+        gGrid.appendChild(s_('line', { x1: pad.l, x2: pad.l + iw, y1: y, y2: y, stroke: cssVar('--rule-soft'), 'stroke-width': 1 }));
+        gAxis.appendChild(svgText({ x: pad.l - 8, y: y + 4, 'text-anchor': 'end', fill: cssVar('--muted'), 'font-size': FS.tick }, fmt(t / 1000, 1)));
+      });
+      gAxis.appendChild(svgText({ x: pad.l + iw, y: H - 4, 'text-anchor': 'end', fill: cssVar('--muted'), 'font-size': FS.note }, '东西向 km（坐标已偏移）'));
+      gAxis.appendChild(svgText({ x: 12, y: pad.t + ih / 2, 'text-anchor': 'middle', fill: cssVar('--muted'), 'font-size': FS.note,
+        transform: `rotate(-90 12 ${pad.t + ih / 2})` }, '南北向 km'));
+      const L = [100, 200, 500, 1000, 2000, 5000, 10000, 20000].find(m => m * v.s >= 70) || 20000;
+      const sx = pad.l + 14, sy = pad.t + ih - 14, len = L * v.s;
+      gAxis.append(
+        s_('rect', { x: sx - 6, y: sy - 22, width: len + 12, height: 28, rx: 4, fill: cssVar('--surface'), 'fill-opacity': .82 }),
+        s_('path', { d: `M${sx},${sy - 5}V${sy}H${sx + len}V${sy - 5}`, fill: 'none', stroke: cssVar('--ink-2'), 'stroke-width': 1.5 }),
+        svgText({ x: sx + len / 2, y: sy - 8, 'text-anchor': 'middle', fill: cssVar('--ink-2'), 'font-size': FS.note }, L >= 1000 ? `${L / 1000} km` : `${L} m`));
+      hulls.forEach(h => {
+        if (h.hp.length < 3) { h.path.setAttribute('d', ''); h.label.textContent = ''; return; }
+        h.path.setAttribute('d', h.hp.map((p, k) => `${k ? 'L' : 'M'}${PX(p[0]).toFixed(1)},${PY(p[1]).toFixed(1)}`).join('') + 'Z');
+        h.label.setAttribute('x', h.hp.reduce((acc, p) => acc + PX(p[0]), 0) / h.hp.length);
+        h.label.setAttribute('y', Math.min(...h.hp.map(p => PY(p[1]))) - 18);
+      });
+      dots.forEach((c, i) => { c.setAttribute('cx', PX(wells[i].x).toFixed(1)); c.setAttribute('cy', PY(wells[i].y).toFixed(1)); });
+      placeMark();
+      st.view = { ...v };
+    }
+
+    function paint() {
+      dots.forEach((c, i) => {
+        const w = wells[i];
+        c.setAttribute('fill', fillOf(w, i));
+        c.setAttribute('fill-opacity', st.mode === 'block' ? (w.is_new ? .95 : .55) : .92);
+        c.setAttribute('stroke', w.is_new ? cssVar('--ink') : cssVar('--surface'));
+        c.classList.toggle('dim', !!st.focus && w.block !== st.focus);
+      });
+      hulls.forEach(h => [h.path, h.label].forEach(n => n.classList.toggle('dim', !!st.focus && h.b !== st.focus)));
+      drawLegend();
+    }
+
+    /* 缩放：按对数插值，平移与缩放同步，看起来像在"飞"过去 */
+    const clampS = x => Math.max(full.s * .8, Math.min(full.s * 14, x));
+    let raf = 0;
+    function animateTo(target, dur = 420) {
+      cancelAnimationFrame(raf);
+      if (!MOTION) { v = { ...target }; render(); return; }
+      const from = { ...v }, t0 = performance.now();
+      const step = now => {
+        const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+        v = { cx: from.cx + (target.cx - from.cx) * e, cy: from.cy + (target.cy - from.cy) * e,
+          s: Math.exp(Math.log(from.s) + (Math.log(target.s) - Math.log(from.s)) * e) };
+        render();
+        if (k < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    }
+    function zoomAt(px, py, factor, animated = true) {
+      const s2 = clampS(v.s * factor), ox = px - pad.l - iw / 2, oy = py - pad.t - ih / 2;
+      const mx = v.cx + ox / v.s, my = v.cy - oy / v.s;          // 光标下的地理坐标保持不动
+      const target = { s: s2, cx: mx - ox / s2, cy: my + oy / s2 };
+      if (animated) animateTo(target); else { cancelAnimationFrame(raf); v = target; render(); }
+    }
+    function fitBlock(b) {
+      const sel = wells.filter(w => w.block === b);
+      const x0 = Math.min(...sel.map(w => w.x)), x1 = Math.max(...sel.map(w => w.x));
+      const y0 = Math.min(...sel.map(w => w.y)), y1 = Math.max(...sel.map(w => w.y));
+      return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 + 60 / v.s,
+        s: clampS(Math.min(iw / ((x1 - x0) * 1.35 || 1), ih / ((y1 - y0) * 1.6 || 1))) };
+    }
+
+    const local = ev => { const r = svg.getBoundingClientRect(); return [(ev.clientX - r.left) * W / r.width, (ev.clientY - r.top) * H / r.height]; };
+    let drag = null;
+    svg.addEventListener('pointerdown', ev => {
+      if (ev.button !== 0) return;
+      const [x, y] = local(ev);
+      drag = { x, y, cx: v.cx, cy: v.cy, id: ev.pointerId };
+      dragMoved = false;
+    });
+    svg.addEventListener('pointermove', ev => {
+      if (!drag) return;
+      const [x, y] = local(ev);
+      if (!dragMoved && Math.hypot(x - drag.x, y - drag.y) < 4) return;
+      if (!dragMoved) { dragMoved = true; svg.setPointerCapture(drag.id); svg.classList.add('dragging'); hideTip(); cancelAnimationFrame(raf); }
+      v = { ...v, cx: drag.cx - (x - drag.x) / v.s, cy: drag.cy + (y - drag.y) / v.s };
+      render();
+    });
+    const endDrag = () => { if (!drag) return; drag = null; svg.classList.remove('dragging'); setTimeout(() => { dragMoved = false; }, 0); };
+    svg.addEventListener('pointerup', endDrag);
+    svg.addEventListener('pointercancel', endDrag);
+    svg.addEventListener('dblclick', ev => { const [x, y] = local(ev); zoomAt(x, y, 2); });
+    const hint = el('div', { class: 'hint', text: '按住 ⌘ / Ctrl 再滚动可缩放地图' });
+    let hintTimer = 0;
+    svg.addEventListener('wheel', ev => {
+      if (!(ev.ctrlKey || ev.metaKey)) {
+        hint.classList.add('on'); clearTimeout(hintTimer);
+        hintTimer = setTimeout(() => hint.classList.remove('on'), 1200);
+        return;
+      }
+      ev.preventDefault();
+      const [x, y] = local(ev);
+      zoomAt(x, y, Math.exp(-ev.deltaY * .0022), false);
+    }, { passive: false });
+    const zbtn = (ic, label, fn) => { const b = el('button', { type: 'button', title: label, 'aria-label': label }, icon(ic)); b.addEventListener('click', fn); return b; };
+    const controls = el('div', { class: 'zoom' }, [
+      zbtn('plus', '放大', () => zoomAt(pad.l + iw / 2, pad.t + ih / 2, 1.6)),
+      zbtn('minus', '缩小', () => zoomAt(pad.l + iw / 2, pad.t + ih / 2, 1 / 1.6)),
+      zbtn('reset', '复位视图', () => { st.focus = null; paint(); animateTo(full); })]);
+
+    api.setMode = m => { st.mode = m; paint(); };
+    api.focus = b => { st.focus = b; paint(); animateTo(b ? fitBlock(b) : full); };
+    api.highlight = c => { st.hi = c; placeMark(); };
+
+    host.append(svg, controls, hint);
+    render();
+    paint();
   });
+  return api;
 }
 
 /* 堆叠柱：正值向上堆、负值向下堆；段与段之间留 2px 表面色间隙 */
@@ -678,10 +1012,12 @@ function stackedColumns(host, cfg) {
         segs.push({ s, a, b, v });
       });
       const lastPos = segs.filter(z => z.v > 0).at(-1), lastNeg = segs.filter(z => z.v < 0).at(-1);
+      const col = s_('g', { class: 'a-up', style: `--d:${Math.round(i / n * 650)}ms` });
       segs.forEach(z => {
         const top = Y(Math.max(z.a, z.b)), h = Math.abs(Y(z.a) - Y(z.b)), gap = h > 3 ? 1 : 0;
-        svg.appendChild(s_('path', { d: barPath(x, top + gap, bw, Math.max(h - 2 * gap, .5), z === lastPos ? 'top' : z === lastNeg ? 'bottom' : null), fill: z.s.color }));
+        col.appendChild(s_('path', { d: barPath(x, top + gap, bw, Math.max(h - 2 * gap, .5), z === lastPos ? 'top' : z === lastNeg ? 'bottom' : null), fill: z.s.color }));
       });
+      svg.appendChild(col);
       const hit = s_('rect', { x: pad.l + i * band, y: pad.t, width: band, height: ih, fill: 'transparent' });
       hit.addEventListener('mousemove', ev => showTip(ev, `<b>${c}</b>` + cfg.series.map(s =>
         `<div class="row"><span><i class="sw" style="background:${s.color}"></i>${s.name}</span><span class="mono">${fmt(s.values[i], 0)} ${cfg.unit || ''}</span></div>`).join('') +
@@ -710,10 +1046,12 @@ function hStackedBars(host, cfg) {
       svg.appendChild(svgText({ x: labelW - 10, y: y + bh / 2 + 4, 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': FS.label }, r.label));
       const segs = cfg.series.map(s => ({ s, v: Math.max(r.values[s.key] || 0, 0) })).filter(z => z.v > 0);
       let acc = 0;
+      const rowG = s_('g', { class: 'a-right', style: `--d:${i * 50}ms` });
+      svg.appendChild(rowG);
       segs.forEach((z, k) => {
         const x = labelW + X(acc), ww = X(z.v), last = k === segs.length - 1;
         acc += z.v;
-        svg.appendChild(s_('path', { d: barPath(x, y, Math.max(ww - (last || ww <= 3 ? 0 : 2), .5), bh, last ? 'right' : null), fill: z.s.color }));
+        rowG.appendChild(s_('path', { d: barPath(x, y, Math.max(ww - (last || ww <= 3 ? 0 : 2), .5), bh, last ? 'right' : null), fill: z.s.color }));
         const hit = s_('rect', { x, y: i * rowH, width: Math.max(ww, 4), height: rowH, fill: 'transparent' });
         hit.addEventListener('mousemove', ev => showTip(ev, `<b>${r.tip || r.label}</b>` +
           `<div class="row"><span><i class="sw" style="background:${z.s.color}"></i>${z.s.name}</span><span class="mono">${fmt(z.v, 0)} ${cfg.unit || ''}</span></div>` +
@@ -721,7 +1059,7 @@ function hStackedBars(host, cfg) {
         hit.addEventListener('mouseleave', hideTip);
         svg.appendChild(hit);
       });
-      svg.appendChild(svgText({ x: labelW + X(acc) + 7, y: y + bh / 2 + 4, fill: cssVar('--muted'), 'font-size': FS.note }, compactT(totals[i])));
+      svg.appendChild(svgText({ class: 'a-fade', style: `--d:${i * 50 + 380}ms`, x: labelW + X(acc) + 7, y: y + bh / 2 + 4, fill: cssVar('--muted'), 'font-size': FS.note }, compactT(totals[i])));
     });
     host.appendChild(svg);
   });
@@ -746,13 +1084,13 @@ function waterfall(host, rows) {
     steps.forEach((s, i) => {
       const x = pad.l + i * band + (band - bw) / 2, up = s.b >= s.a;
       const top = Y(Math.max(s.a, s.b)), h = Math.max(Math.abs(Y(s.a) - Y(s.b)), 1);
-      svg.appendChild(s_('path', { d: barPath(x, top, bw, h, up ? 'top' : 'bottom'), fill: s.r.color }));
+      svg.appendChild(s_('path', { class: up ? 'a-up' : 'a-down', style: `--d:${i * 110}ms`, d: barPath(x, top, bw, h, up ? 'top' : 'bottom'), fill: s.r.color }));
       if (i < steps.length - 1)
-        svg.appendChild(s_('line', { x1: x + bw, x2: x + band + (band - bw) / 2, y1: Y(s.b), y2: Y(s.b), stroke: cssVar('--rule'), 'stroke-width': 1 }));
+        svg.appendChild(s_('line', { class: 'a-fade', style: `--d:${i * 110 + 300}ms`, x1: x + bw, x2: x + band + (band - bw) / 2, y1: Y(s.b), y2: Y(s.b), stroke: cssVar('--rule'), 'stroke-width': 1 }));
       svg.appendChild(svgText({ x: x + bw / 2, y: pad.t + ih + 16, 'text-anchor': 'middle', fill: cssVar('--ink-2'), 'font-size': FS.note },
         band < 62 ? (s.r.tiny || s.r.label) : s.r.label));
       if (s.r.total || big.includes(s))
-        svg.appendChild(svgText({ x: x + bw / 2, y: up ? top - 6 : top + h + 13, 'text-anchor': 'middle', fill: cssVar('--muted'), 'font-size': FS.note },
+        svg.appendChild(svgText({ class: 'a-fade', style: `--d:${i * 110 + 360}ms`, x: x + bw / 2, y: up ? top - 6 : top + h + 13, 'text-anchor': 'middle', fill: cssVar('--muted'), 'font-size': FS.note },
           (s.r.total || s.r.value < 0 ? '' : '+') + compactT(s.r.value)));
       const hit = s_('rect', { x: pad.l + i * band, y: pad.t, width: band, height: ih, fill: 'transparent' });
       hit.addEventListener('mousemove', ev => showTip(ev, `<b>${s.r.item}</b>` +
@@ -781,8 +1119,8 @@ function deltaLine(host, cfg) {
       svg.appendChild(svgText({ x: X(cfg.baseX) + 5, y: pad.t + 11, fill: cssVar('--muted'), 'font-size': FS.note }, '基准'));
     }
     const pts = cfg.x.map((x, i) => ({ x, y: cfg.y[i] }));
-    svg.appendChild(s_('polyline', { points: pts.map(p => `${X(p.x)},${Y(p.y)}`).join(' '), fill: 'none', stroke: cfg.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
-    [pts[0], pts.at(-1)].forEach(p => svg.appendChild(s_('circle', { cx: X(p.x), cy: Y(p.y), r: 4, fill: cfg.color, stroke: cssVar('--surface'), 'stroke-width': 2 })));
+    svg.appendChild(s_('polyline', { class: 'a-clip', points: pts.map(p => `${X(p.x)},${Y(p.y)}`).join(' '), fill: 'none', stroke: cfg.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    [pts[0], pts.at(-1)].forEach(p => svg.appendChild(s_('circle', { class: 'a-clip', cx: X(p.x), cy: Y(p.y), r: 4, fill: cfg.color, stroke: cssVar('--surface'), 'stroke-width': 2 })));
     const cross = s_('line', { y1: pad.t, y2: pad.t + ih, stroke: cssVar('--rule'), 'stroke-width': 1, opacity: 0 });
     svg.appendChild(cross);
     const hit = s_('rect', { x: pad.l, y: pad.t, width: iw, height: ih, fill: 'transparent' });
@@ -813,9 +1151,9 @@ function dumbbell(host, rows, cfg) {
       const y = top + i * rowH + rowH / 2;
       svg.appendChild(svgText({ x: labelW - 10, y: y + 4, 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': FS.label }, r.label));
       if (r.a != null && r.b != null)
-        svg.appendChild(s_('line', { x1: X(r.a), x2: X(r.b), y1: y, y2: y, stroke: cssVar('--rule'), 'stroke-width': 2 }));
-      [[r.a, cfg.aColor], [r.b, cfg.bColor]].forEach(([v, c]) => {
-        if (v != null) svg.appendChild(s_('circle', { cx: X(v), cy: y, r: 5, fill: c, stroke: cssVar('--surface'), 'stroke-width': 2 }));
+        svg.appendChild(s_('line', { class: r.b >= r.a ? 'a-right' : 'a-left', style: `--d:${i * 40 + 160}ms`, x1: X(r.a), x2: X(r.b), y1: y, y2: y, stroke: cssVar('--rule'), 'stroke-width': 2 }));
+      [[r.a, cfg.aColor], [r.b, cfg.bColor]].forEach(([v, c], j) => {
+        if (v != null) svg.appendChild(s_('circle', { class: 'a-pop', style: `--d:${i * 40 + (j ? 480 : 80)}ms`, cx: X(v), cy: y, r: 5, fill: c, stroke: cssVar('--surface'), 'stroke-width': 2 }));
       });
       const hit = s_('rect', { x: 0, y: y - rowH / 2, width: W, height: rowH, fill: 'transparent' });
       hit.addEventListener('mousemove', ev => showTip(ev, r.tip));
@@ -861,7 +1199,13 @@ const ICON = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
   alert: '<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17h.01"/>',
-  send: '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>'
+  send: '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
+  download: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>',
+  printer: '<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="1.5"/><path d="M7 14h10v7H7z"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
+  reset: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>',
+  ok: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/>'
 };
 const icon = name => {
   const t = document.createElement('template');
@@ -875,7 +1219,57 @@ const tU = v => (v === null || v === undefined) ? { value: '—' }
 const signed = (v, d = 0) => (v > 0 ? '+' : '') + fmt(v, d);
 
 const tag = (text, kind) => el('span', { class: 'tag' + (kind ? ' ' + kind : '') }, text);
-const loading = text => el('div', { class: 'busy', role: 'status', text: text || '加载中…' });
+/* 加载态：整页用骨架屏（版面先占住，数据到了不跳），小区域用一行转圈 */
+const loading = (text, compact) => compact
+  ? el('div', { class: 'busy compact', role: 'status', text: text || '加载中…' })
+  : el('div', { class: 'busy', role: 'status', 'aria-live': 'polite' }, [
+    el('div', { class: 'busy-text', text: text || '加载中…' }),
+    el('div', { class: 'sk-kpis' }, Array.from({ length: 5 }, () => el('div', { class: 'sk-kpi' },
+      [el('i', { class: 'sk w40' }), el('i', { class: 'sk w70 tall' }), el('i', { class: 'sk w55' })]))),
+    el('div', { class: 'sk-row' }, [
+      el('div', { class: 'sk-panel' }, [el('i', { class: 'sk w30' }), el('i', { class: 'sk area' })]),
+      el('div', { class: 'sk-panel' }, [el('i', { class: 'sk w40' }), el('i', { class: 'sk w70' }), el('i', { class: 'sk w55' }),
+        el('i', { class: 'sk w70' }), el('i', { class: 'sk w40' }), el('i', { class: 'sk w55' })])])]);
+
+/* 内容就位：面板依次浮现，指标数值从 0 滚动到目标值（只动 transform / opacity 与文字） */
+function show(target, ...nodes) {
+  nodes = nodes.filter(Boolean);
+  target.replaceChildren(...nodes);
+  if (!MOTION) return;
+  let i = 0;
+  const mark = n => { if (n.classList) { n.classList.add('rv'); n.style.setProperty('--i', i++); } };
+  nodes.forEach(n => {
+    if (n.classList && (n.classList.contains('row') || n.classList.contains('stack'))) {
+      [...n.children].forEach(c => (c.classList.contains('stack') ? [...c.children].forEach(mark) : mark(c)));
+    } else mark(n);
+  });
+  target.querySelectorAll('.kval').forEach(countUp);
+}
+function countUp(node) {
+  const tn = node.firstChild;
+  if (!tn || tn.nodeType !== 3) return;
+  const txt = tn.nodeValue.trim(), m = /^-?[\d,]*\d(\.(\d+))?$/.exec(txt);
+  if (!m) return;
+  const target = parseFloat(txt.replace(/,/g, '')), dec = m[2] ? m[2].length : 0, comma = txt.includes(',');
+  if (!Number.isFinite(target) || target === 0) return;
+  const f = x => comma ? x.toLocaleString('zh-CN', { minimumFractionDigits: dec, maximumFractionDigits: dec }) : x.toFixed(dec);
+  const t0 = performance.now(), dur = 850;
+  const step = now => {
+    const k = Math.min(1, (now - t0) / dur);
+    tn.nodeValue = k < 1 ? f(target * (1 - Math.pow(1 - k, 3))) : txt;
+    if (k < 1) requestAnimationFrame(step);
+  };
+  tn.nodeValue = f(0);
+  requestAnimationFrame(step);
+}
+
+const toastHost = el('div', { class: 'toasts', 'aria-live': 'polite' });
+document.body.appendChild(toastHost);
+function toast(text, kind = 'ok') {
+  const t = el('div', { class: 'toast ' + kind, role: kind === 'crit' ? 'alert' : 'status' }, [icon(kind === 'crit' ? 'alert' : 'ok'), el('span', { text })]);
+  toastHost.appendChild(t);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 240); }, kind === 'crit' ? 6000 : 4200);
+}
 const emptyState = text => el('div', { class: 'empty', text });
 const alertBar = (kind, title, text) => el('div', { class: 'alert ' + kind, role: kind === 'crit' ? 'alert' : null }, [
   icon(kind === 'info' ? 'info' : 'alert'),
@@ -969,15 +1363,24 @@ function wellHead(info) {
 
 function subTabs(items, active, onChange) {
   const bar = el('div', { class: 'subtabs', role: 'tablist' });
+  const ink = el('i', { class: 'ink', 'aria-hidden': 'true' });            /* 选中下划线：滑动到新页签 */
+  const place = (b, instant) => {
+    if (instant) ink.style.transition = 'none';
+    ink.style.width = b.offsetWidth + 'px';
+    ink.style.transform = `translateX(${b.offsetLeft}px)`;
+    if (instant) { void ink.offsetWidth; ink.style.transition = ''; }
+  };
   items.forEach(i => {
     const b = el('button', { type: 'button', role: 'tab', 'aria-selected': String(i.k === active), 'data-k': i.k },
       [i.label, i.cnt !== undefined ? el('span', { class: 'cnt', text: String(i.cnt) }) : null]);
     b.addEventListener('click', () => {
       bar.querySelectorAll('button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
-      hideTip(); onChange(i.k);
+      place(b); hideTip(); onChange(i.k);
     });
     bar.appendChild(b);
   });
+  bar.appendChild(ink);
+  requestAnimationFrame(() => { const a = bar.querySelector('button[aria-selected="true"]'); if (a) place(a, true); });
   return bar;
 }
 
@@ -1040,12 +1443,25 @@ async function renderOverview() {
     { label: '训练 / 校准 / 测试', value: `${ov.model.n_train} / ${ov.model.n_calib} / ${ov.model.n_test}`, note: ov.model.split_method === 'time' ? '按投产年份时间外推切分' : ov.model.split_method }]);
 
   const colors = BLOCK_COLORS();
-  const plot = el('div');
-  scatter(plot, wells, 'block', colors, code => { pickWell(code); go('well'); });
+  const plot = el('div'), mapLegend = el('div', { class: 'mlegend' });
+  S.mapApi = wellMap(plot, { wells, colors, current: S.current, mode: S.mapMode, legendHost: mapLegend,
+    onPick: code => { pickWell(code); go('well'); } });
+  const modeSeg = el('div', { class: 'seg', role: 'group', 'aria-label': '着色方式' },
+    [['block', '区块'], ['cum', '累产'], ['year', '投产年份']].map(([k, label]) => {
+      const b = el('button', { type: 'button', 'aria-pressed': String((S.mapMode || 'block') === k), text: label });
+      b.addEventListener('click', () => {
+        S.mapMode = k;
+        modeSeg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+        S.mapApi.setMode(k);
+      });
+      return b;
+    }));
   const mapPanel = panel('井位分布', {
-    meta: '颜色 = 区块 · 大小 = 累产 · 深色描边 = 新井 · 点击井位进入单井分析',
-    note: ['坐标已统一偏移，不可反推真实井位。', '新井指投产不足 420 天、尚未走完主要生产周期的井。']
-  }, [legend(Object.entries(colors).map(([b, c]) => ({ name: b, color: c, kind: 'dot' }))), el('figure', {}, plot)]);
+    meta: `${wells.length} 口井 · 等比例投影`, actions: [modeSeg],
+    note: ['坐标已统一偏移，不可反推真实井位；东西、南北同一比例尺。',
+      '操作：拖动平移，双击放大，⌘ / Ctrl + 滚轮或触控板双指缩放，右上角按钮复位；点击区块图例聚焦该区块，点击井位进入单井分析。',
+      '新井指投产不足 420 天、尚未走完主要生产周期的井。']
+  }, [mapLegend, el('figure', {}, plot)]);
 
   const rep = ov.report || {};
   const bt = Object.entries(rep).map(([k, r]) => ({
@@ -1064,7 +1480,7 @@ async function renderOverview() {
     meta: `${ov.quality.n_passed} / ${ov.quality.n_wells} 通过 · 未通过的进隔离区，不进训练集`, flush: true
   }, qRows.length ? table([{ h: '未通过原因（前 5）', k: 'reason' }, { h: '井数', k: 'n', num: true, d: 0 }], qRows) : emptyState('全部通过'));
 
-  host.replaceChildren(strip,
+  show(host, strip,
     el('div', { class: 'row c21' }, [mapPanel, el('div', { class: 'stack' }, [btPanel, qPanel])]),
     el('div', { class: 'row' }, wellListPanel(wells)));
 }
@@ -1088,8 +1504,13 @@ function wellListPanel(wells) {
     const rows = wells.filter(w => !q || w.well_code.toUpperCase().includes(q));
     const pages = Math.max(1, Math.ceil(rows.length / PAGE));
     S.wl.page = Math.min(S.wl.page, pages - 1);
-    tbHost.replaceChildren(rows.length ? table(cols, rows.slice(S.wl.page * PAGE, (S.wl.page + 1) * PAGE),
-      { onRow: r => { pickWell(r.well_code); go('well'); } }) : emptyState('没有匹配的井'));
+    const pageRows = rows.slice(S.wl.page * PAGE, (S.wl.page + 1) * PAGE);
+    tbHost.replaceChildren(rows.length ? table(cols, pageRows, { onRow: r => { pickWell(r.well_code); go('well'); } }) : emptyState('没有匹配的井'));
+    /* 悬停列表行时在井位图上标出该井 */
+    tbHost.querySelectorAll('tbody tr').forEach((tr, i) => {
+      tr.addEventListener('mouseenter', () => S.mapApi && S.mapApi.highlight(pageRows[i].well_code));
+      tr.addEventListener('mouseleave', () => S.mapApi && S.mapApi.highlight(null));
+    });
     pager.replaceChildren(el('span', { text: `共 ${rows.length} 口 · 第 ${S.wl.page + 1} / ${pages} 页` }),
       el('button', { class: 'btn sm', type: 'button', text: '上一页', disabled: S.wl.page === 0, onclick: () => { S.wl.page--; draw(); } }),
       el('button', { class: 'btn sm', type: 'button', text: '下一页', disabled: S.wl.page >= pages - 1, onclick: () => { S.wl.page++; draw(); } }));
@@ -1123,7 +1544,7 @@ async function renderWell() {
       api('/predict/lifecycle', { well_code: S.current }), api('/analogs', { well_code: S.current, top_k: 5 }),
       api('/reserves/dca', { well_code: S.current }).catch(() => null)]);
   } catch (e) {
-    if (token === S.tok.well) host.replaceChildren(alertBar('crit', '加载失败', e.message));
+    if (token === S.tok.well) show(host, alertBar('crit', '加载失败', e.message));
     return;
   }
   if (token !== S.tok.well) return;
@@ -1178,7 +1599,7 @@ async function renderWell() {
 
   const warn = !act && curve.actual ? alertBar('info', '暂无可信实际标签',
     `质量位 ${curve.actual.label_quality || '—'}：峰后下降尚未持续足够长时间，不展示"实际达峰"，避免把还没到的峰当成真值。`) : null;
-  host.replaceChildren(...[wellHead(info), warn, strip, curvePanel,
+  show(host, ...[wellHead(info), warn, strip, curvePanel,
     el('div', { class: 'row c2' }, [attrPanel, anPanel])].filter(Boolean));
 }
 
@@ -1199,7 +1620,7 @@ async function renderReserves() {
     soft(api('/reserves/dca', { well_code: S.current })), soft(api('/reserves/volumetric', { well_code: S.current })),
     soft(api('/reserves/crosscheck', { well_code: S.current })), soft(api('/sec/screen', { well_code: S.current }))]);
   if (token !== S.tok.reserves) return;
-  if (info._error) { host.replaceChildren(alertBar('crit', '加载失败', info._error)); return; }
+  if (info._error) { show(host, alertBar('crit', '加载失败', info._error)); return; }
 
   const strip = kpiStrip([
     { label: 'EUR · P50', ...(dca._error ? { value: '不可得' } : tU(dca.eur.p50)), note: dca._error ? '需峰后 180 天历史' : `P10–P90 ${fmt(dca.eur.p10, 0)} ~ ${fmt(dca.eur.p90, 0)} t` },
@@ -1260,7 +1681,7 @@ async function renderReserves() {
       el('div', {}, [el('div', { class: 'it', text: i.item }), el('div', { class: 'ev', text: '依据：' + i.evidence }),
         i.citation ? el('div', { class: 'ct mono', text: i.citation }) : null])]))));
 
-  host.replaceChildren(...[wellHead(info),
+  show(host, ...[wellHead(info),
     dca._error ? alertBar('warn', '递减分析不适用', `${dca._error}。递减分析要求已过峰，把上升段当递减段拟合会外推出荒谬的 EUR；该井储量区间请参考"全生命周期预测"中的 EUR。`) : null,
     strip,
     el('div', { class: 'row c2' }, [el('div', { class: 'stack' }, [dcaPanel, ccPanel, volPanel]), secPanel])].filter(Boolean));
@@ -1312,6 +1733,37 @@ function unitCtx(opts, onChange) {
   return out;
 }
 
+/* 报告导出：按页头当前的评估对象、基准日、价格情景生成；Word 直接下载，打印版在新标签页打开 */
+function reportButtons() {
+  const qs = fmtName => new URLSearchParams({ scope: S.scope, as_of: S.asOf, scenario: S.scenario, format: fmtName });
+  const word = el('button', { class: 'btn sm primary', type: 'button', title: '按当前评估对象、基准日与价格情景生成 Word 报告' },
+    [icon('download'), '导出 Word']);
+  word.addEventListener('click', async () => {
+    const idle = [...word.childNodes];
+    word.disabled = true;
+    word.replaceChildren(el('i', { class: 'spin' }), '生成中…');
+    try {
+      const r = await fetch('/api/v1/unit/report?' + qs('docx'));
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'HTTP ' + r.status); }
+      const blob = await r.blob(), cd = r.headers.get('content-disposition') || '';
+      const m = /filename\*=utf-8''([^;]+)/i.exec(cd) || /filename="?([^";]+)"?/i.exec(cd);
+      const name = m ? decodeURIComponent(m[1]) : 'SEC储量预评估报告.docx';
+      const a = el('a', { href: URL.createObjectURL(blob), download: name });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast(`报告已生成：${name}`);
+    } catch (e) {
+      toast('报告生成失败：' + e.message, 'crit');
+    } finally {
+      word.disabled = false;
+      word.replaceChildren(...idle);
+    }
+  });
+  const print = el('a', { class: 'btn sm', target: '_blank', rel: 'noopener', href: '/api/v1/unit/report?' + qs('html'),
+    title: '打开可打印版本，浏览器打印时选择"另存为 PDF"' }, [icon('printer'), '打印版 / PDF']);
+  return [el('span', { class: 'ctx-sep', 'aria-hidden': 'true' }), word, print];
+}
+
 function evidenceText(kind, e) {
   if (kind === 'wells') return `${e.well_code}（${e.unit_id}）${fmt(e.reserves_t, 0)} t，${e.basis}，投产 ${e.months_on} 个月`;
   if (kind === 'measures') return `${e.well_code}（${e.unit_id}）${e.event_name} ${e.event_ym}，增加可采 ${fmt(e.inc_eur_t, 0)} t`;
@@ -1326,8 +1778,8 @@ async function renderUnit() {
   host.replaceChildren(loading('加载评估单元…'));
   await ensureUnits();
   if (token !== S.tok.unit || S.page !== 'unit') return;
-  setCtx('unit', unitCtx({ date: true, scenario: true }, renderUnit));
-  host.replaceChildren(loading('评估中… 首次评估需逐井拟合全部老井（公司级约 10 秒），之后命中缓存'));
+  setCtx('unit', [...unitCtx({ date: true, scenario: true }, renderUnit), ...reportButtons()]);
+  host.replaceChildren(loading('评估中… 首次评估需逐井拟合全部老井（公司级约 10 秒）；结果会存为快照，服务重启后直接读取'));
 
   const dates = S.units.evaluation_dates, idx = dates.indexOf(S.asOf);
   const q = { scope: S.scope, as_of: S.asOf }, qs = { ...q, scenario: S.scenario };
@@ -1340,7 +1792,7 @@ async function renderUnit() {
     softApi('/unit/measures', q), rq ? softApi('/unit/reconcile', rq) : noPrev,
     rq ? softApi('/unit/attribution', rq) : noPrev, softApi('/unit/sensitivity', qs)]);
   if (token !== S.tok.unit) return;            /* 筛选已改：丢弃过期结果 */
-  if (comp._error) { host.replaceChildren(alertBar('crit', '构成评估失败', comp._error)); return; }
+  if (comp._error) { show(host, alertBar('crit', '构成评估失败', comp._error)); return; }
 
   const C = COMP(), color = Object.fromEntries(C.map(c => [c.key, c.color]));
   const D = { comp, prod, dec, nw, meas, recon, attr, sens, C, color };
@@ -1356,8 +1808,8 @@ async function renderUnit() {
     { k: 'sens', label: '敏感性' }];
   if (!tabs.some(t => t.k === S.unitSub)) S.unitSub = 'comp';
   const subHost = el('div');
-  const drawSub = () => subHost.replaceChildren(...UNIT_SUB[S.unitSub](D));
-  host.replaceChildren(strip, subTabs(tabs, S.unitSub, k => { S.unitSub = k; drawSub(); }), subHost);
+  const drawSub = () => show(subHost, ...UNIT_SUB[S.unitSub](D));
+  show(host, strip, subTabs(tabs, S.unitSub, k => { S.unitSub = k; drawSub(); }), subHost);
   drawSub();
 }
 
@@ -1606,7 +2058,7 @@ async function renderMonitor() {
   if (monLeft) monLeft.appendChild(planPanel);
   else out.push(el('div', { class: 'row' }, planPanel));
   if (unitsPanel) out.push(el('div', { class: 'row' }, unitsPanel));
-  host.replaceChildren(...out);
+  show(host, ...out);
 }
 
 /* ── 智能问答：工具调用轨迹是这一页的主角 ── */
@@ -1656,14 +2108,14 @@ function renderChat() {
   const tracePanel = panel('调用轨迹', { note: '它只能调用下列工具；回答里的每个数字都要能在工具返回值里找到。' }, trace);
   tracePanel.querySelector('.pb').classList.add('flush');
 
-  host.replaceChildren(el('div', { class: 'chat' }, [
+  show(host, el('div', { class: 'chat' }, [
     el('div', { class: 'qcol' }, panel('常用问题', { flush: true }, qlist)), ansPanel,
     el('div', { class: 'trace-col' }, tracePanel)]));
 
   async function ask() {
     const q = input.value.trim(); if (!q) return;
     btn.disabled = true; answer.className = 'answer placeholder'; answer.textContent = '分析中…';
-    meta.replaceChildren(); trace.replaceChildren(loading('调用工具中…'));
+    meta.replaceChildren(); trace.replaceChildren(loading('调用工具中…', true));
     try {
       const r = await fetch('/api/v1/agent/ask', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q })
@@ -1745,7 +2197,7 @@ async function renderEval() {
       table([{ h: '目标', k: 'target' }, { h: 'MAE', k: 'mae', num: true }, { h: '覆盖率', k: 'coverage', num: true },
         { h: '相对基线 (%)', k: 'gain_pct', num: true, d: 1 }], rows))));
   }
-  host.replaceChildren(...out);
+  show(host, ...out);
 }
 
 /* ══════════════════════════════════════════════════════════════

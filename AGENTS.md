@@ -28,8 +28,11 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
 - SEC 单元"新-老-措"构成评估的纯计算在 `src/reserves/workload.py`（工作量剥离）、
   `src/sec/composition.py`（构成、对账、敏感性、归因）、`src/sec/indicators.py`（指标评分）；
   它们不读库，由 `services.py` 准备好月度表、井表、事件表后传入。
-- **写操作只有一个**：`services.persist_unit_evaluation`（评估结果入库），只给 CLI `unit-eval` 用，
+- **写业务成果只有一处**：`services.persist_unit_evaluation`（评估结果入库），只给 CLI `unit-eval` 用，
   不注册为智能体工具、不开放 HTTP 接口。智能体工具一律只读。
+  另有两处不改变业务数据的写入：`sec_eval_snapshot` 是单元评估的计算缓存（指纹覆盖数据、模型、口径、
+  价格册与评估算法源码，不符即作废，可随时清空）；`src/report/unit_report.py` 把报告文件写到
+  `data/artifacts/` 并记审计日志 —— 报告里的数字一律取自 services，报告层只排版不算数。
 - `src/api/services.py` 是唯一的数值出口。新增能力时先在这里加函数，再在
   `src/agent/tools.py` 注册成工具，最后在 `src/agent/plans.py` 挂进计划模板。
 - 任何 service 返回体都必须带四个追溯字段

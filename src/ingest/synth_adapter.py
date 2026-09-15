@@ -111,7 +111,7 @@ def ingest(n_wells: int | None = None, seed: int | None = None, reset: bool = Tr
     if reset:
         with db.connect() as conn:
             for t in TABLES + DERIVED + ("lifecycle_label", "prediction", "model_run",
-                                         "sec_eval_record"):
+                                         "sec_eval_record", "sec_eval_snapshot"):
                 conn.execute(f"DELETE FROM {t}")
     counts = {t: db.write_df(data[t], t) for t in TABLES}
 

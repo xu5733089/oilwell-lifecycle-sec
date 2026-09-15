@@ -64,12 +64,14 @@ pip install --no-index --find-links wheelhouse -r requirements.txt
 | ② 训练 | `train [--obs-days 90] [--split time\|group\|random]` | 标签提取、GBDT 分位数、保形校准，模型写 `data/artifacts/` | 五个目标的 MAE / 覆盖率表 |
 | ③ 单元评估 | `unit-eval [--as-of 2026-12-31] [--scenario all\|sec\|assessment\|impairment]` | 全部单元的"新-老-措"构成评估写入 `sec_eval_record`（历史评估成果） | 每单元 × 每情景的四项构成表 |
 | ④ 演示 | `demo [--new-well 井号] [--old-well 井号]` | 四条主线依次跑 | 预测、递减、SEC 清单、问答轨迹、单元构成与对账 |
-| ⑤ 服务 | `serve [--host 0.0.0.0] [--port 8000]` | HTTP 服务 + 前端 | 浏览器打开 `http://127.0.0.1:8000` |
+| ⑤ 服务 | `serve [--host 0.0.0.0] [--port 8000] [--no-warmup]` | HTTP 服务 + 前端；启动时后台预热最近两期单元评估（有快照时约 1 秒） | 浏览器打开 `http://127.0.0.1:8000` |
 
 井号在编号上不连续，示例统一用 **`SB-C-0004`（新井）** 与 **`GL-A-0357`（老井）**；
 单元号为 `SEC_GLA_Q1` 这类"区块 × 层系"，采油厂为"第一采油厂""第二采油厂"，公司为"示例油田公司"。
 
 `unit-eval` 不是必需步骤：不入库时服务会按上期数据截面现算期初；入库后对账直接取入库值作期初（返回体里 `opening_source` 标明来源）。
+
+单元评估的完整中间结果（逐井递减拟合、措施效果、新井取值）会自动存为快照（`sec_eval_snapshot`）：第一次评估公司级约 10 秒，之后服务重启直接读快照（构成 0.6 秒、对账 0.05 秒）。快照带指纹，数据、模型、口径、价格册或评估算法源码一变就自动作废重算。
 
 ### 3. 其它命令
 
@@ -79,9 +81,10 @@ python -m src.cli ask "第一采油厂 2026年 SEC 储量构成"              # 
 python -m src.cli ask "SEC_GLA_Q1 2025年到2026年储量为什么变化"     # 对账 + 归因到单井
 python -m src.cli ask "示例油田公司 扣3年和扣5年自然递减率" --json  # 输出完整 JSON（含轨迹与校验）
 python -m src.cli report GL-A-0357 --as-of 2026-12-31             # 单井报告初稿（docx/md）
+python -m src.cli unit-report --scope 示例油田公司 --format both    # SEC 单元储量预评估报告（Word + 可打印 HTML）
 python -m src.cli eval-agent -n 150 --verbose                     # 智能体评测集（单井 + 单元）
 python -m src.cli eval-algo                                       # 三种切分方式对比（跑完恢复原线上模型）
-python -m unittest discover -s tests -v                           # 80 项测试
+python -m unittest discover -s tests -v                           # 87 项测试
 ```
 
 ### 4. 配置
@@ -133,6 +136,7 @@ python -m unittest discover -s tests -v                           # 80 项测试
 | `/unit/attribution` | 同上 | 变化归因到单井、措施、价格 |
 | `/unit/sensitivity` | `as_of`、`scenario` | 油价、成本、产量、递减率敏感性曲线与权重 |
 | `/unit/indicators` | `as_of_list` | 开发与经营指标及评分（两期对比） |
+| `/unit/report` | `as_of` `scenario` `format=docx\|html` | SEC 单元储量预评估报告：Word 文件下载，或可打印（另存 PDF）的网页 |
 
 ```bash
 curl "http://127.0.0.1:8000/api/v1/unit/composition?scope=第一采油厂&scenario=impairment"
@@ -234,9 +238,9 @@ flowchart LR
 
 ```
 conf/            config · label_def（v2）· price_deck（三套情景）· units（单元层级）· indicators（评分锚点）
-sql/schema.sql   统一数据模型，SQLite 与 PostgreSQL 通用（13 张表）
+sql/schema.sql   统一数据模型，SQLite 与 PostgreSQL 通用（14 张表）
 src/
-  cli.py         init / train / unit-eval / demo / ask / report / eval-agent / eval-algo / serve
+  cli.py         init / train / unit-eval / unit-report / demo / ask / report / eval-agent / eval-algo / serve
   pipeline.py    训练流水线        config.py 读 conf        db.py 数据库        trace.py 追溯与审计
   synth/         合成井生成器：日期对齐到数据截止日；按类型的持续措施效应；扩边井；真值
   ingest/        数据适配器：四张基础表 + 单元层级 + 单元-井归属 + 计划值
@@ -251,11 +255,12 @@ src/
   agent/         llm_client · router · slots · plans · tools · guard · orchestrator · rag/
   api/           services.py（全部数值的唯一产地）· app.py（Starlette HTTP 层）
   eval/          算法评测 + 智能体评测集（单井 37 个模板 + 单元 15 个模板）
-  report/        单井报告初稿
+  report/        docx_report —— 单井报告初稿
+                 unit_report —— SEC 单元储量预评估报告（同一组内容块渲染 Word 与可打印 HTML）
 data/standards/  sec_rules.md —— 准则语料，按条款切分供 RAG 引用
 docs/            dev-plan-sec-unit.md —— SEC 单元扩展的开发计划
 web/index.html   前端：单文件、零依赖、手写 SVG
-tests/           test_kernel · test_agent · test_unit，共 80 项（stdlib unittest）
+tests/           test_kernel · test_agent · test_unit · test_report_snapshot，共 87 项（stdlib unittest）
 ```
 
 ### 数据模型
@@ -267,6 +272,7 @@ tests/           test_kernel · test_agent · test_unit，共 80 项（stdlib un
 | `unit_plan_monthly` | 新井、措施、老井的月度产量与工作量计划 |
 | `lifecycle_label` | 见油 / 达峰 / EUR 标签（带口径版本） |
 | `sec_eval_record` | **历史评估成果**：每期 × 单元 × 价格情景 × 构成一行 |
+| `sec_eval_snapshot` | 单元评估快照：内核完整中间结果的计算缓存，按指纹自动失效，可随时清空 |
 | `reserves_record` / `model_run` / `prediction` / `audit_log` | 储量结果、训练记录、预测留痕、审计日志 |
 
 ### 前端
@@ -290,6 +296,12 @@ tests/           test_kernel · test_agent · test_unit，共 80 项（stdlib un
 经 dataviz 校验脚本验证浅色（#FFFFFF）、深色（#141B26）两种表面全项通过（四色相邻色盲 ΔE ≥ 10）。
 每张图都有悬停提示和"图表 / 表格"切换，不画双轴图；口径说明收在面板右上角的"口径"按钮里。
 窄屏（≤ 900px）下侧栏变为顶部横向导航，表格在面板内横向滚动。
+
+**井位图**：东西、南北同一比例尺的等比例投影，按区块画出范围与井数；可在"区块 / 累产 / 投产年份"三种着色间切换（后两者为单一色相顺序色）；拖动平移、双击放大、⌘/Ctrl + 滚轮或触控板双指缩放，点区块图例会聚焦并飞到该区块；当前井带脉冲标记，悬停井列表的行会在图上标出对应的井。
+
+**动效**：内容就位时面板依次浮现、指标数值滚动到目标值；柱状图从基线长出、瀑布图逐级落下、折线与区间带从左向右展开；子页签下划线滑动、加载时显示骨架屏。只动 transform / opacity，只在首次绘制时播放，系统开启"减少动态效果"时全部关闭。
+
+**报告导出**：构成评估页右上角"导出 Word"按当前评估对象、基准日、价格情景生成报告（摘要、构成、价格情景对比、产量与递减、新井、措施、对账与归因、敏感性、指标评价、口径与局限、新井清单附录、数据追溯附录）；"打印版 / PDF"打开同内容的网页，浏览器打印时另存为 PDF。接口为 `GET /api/v1/unit/report?scope=&as_of=&scenario=&format=docx|html`。
 
 ---
 
@@ -468,7 +480,8 @@ flowchart LR
 - **折耗额与减值金额未计算**：需要资产账面价值，本平台只给产量法折耗率与减值价情景储量。
 - **指标锚点是示例值**，按合成的致密油水平井标定，常规注水油田须重新标定。
 - **单井 DCA 对措施后的井**可能长期高于经济极限（t_econ 触及 50 年上限），清单中已明确标注"该时刻为积分上限"。
-- **单元评估缓存在进程内**：服务重启后首次打开公司级页面约需 10 秒；`unit-eval` 入库的结果目前只用于对账期初。
+- **单元评估快照整体失效后需重算**：数据、模型、口径、价格册或评估算法任一变化，首次打开公司级页面仍需约 10 秒（算完写回快照）；`unit-eval` 入库的成果目前只用于对账期初。
+- **PDF 由浏览器打印生成**：服务端不依赖 LibreOffice；报告图件需要中文字体，缺字体时报告会注明图件未生成。
 - **工具链正确率 0.95 的缺口**：合规计划在主工具失败后不再检索条款，缺数据类用例因此记为未调全。
 - **单元级模板只在 `mock` 后端评测过**；接入真实大模型后自由成文仍受 guard 约束，但需要补一轮评测。
 - **评测页尚未展示失败样例明细**。序列模型、物理正则、SHAP 归因、准则正式条文仍为下一步。

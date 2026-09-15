@@ -104,6 +104,26 @@ async def ask(request: Request) -> JSONResponse:
     return _ok(Agent().answer(str(q)).to_dict())
 
 
+async def unit_report(request: Request):
+    """SEC 单元储量预评估报告：format=docx 下载 Word，format=html 返回可打印（另存 PDF）的网页。"""
+    from ..report import unit_report as R
+    body = await _body(request)
+    if "scope" not in body:
+        return _err("缺少必填参数：['scope']", 400)
+    fmt = str(body.get("format", "docx"))
+    try:
+        out = R.build(str(body["scope"]), as_of=body.get("as_of"), scenario=str(body.get("scenario", "sec")),
+                      formats=(fmt,))
+    except S.KernelError as exc:
+        return _err(str(exc), 422)
+    f = Path(out[fmt])
+    headers = {"X-Trace-Id": out["trace_id"]}
+    if fmt == "html":
+        return FileResponse(f, media_type="text/html; charset=utf-8", headers=headers)
+    return FileResponse(f, filename=f.name, headers=headers,
+                        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
 WEB_DIR = Path(__file__).resolve().parents[2] / "web"
 
 
@@ -152,6 +172,7 @@ routes = [
     Route(f"{API}/unit/attribution", _wrap(S.unit_change_attribution, "scope"),
           methods=["POST", "GET"]),
     Route(f"{API}/unit/indicators", _wrap(S.unit_indicators, "scope"), methods=["POST", "GET"]),
+    Route(f"{API}/unit/report", unit_report, methods=["POST", "GET"]),
 ]
 
 if WEB_DIR.exists():

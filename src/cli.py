@@ -9,6 +9,7 @@
     python -m src.cli serve           # 起 HTTP 服务
     python -m src.cli report GL-A-0357
     python -m src.cli unit-eval       # SEC 单元"新-老-措"构成评估并入库
+    python -m src.cli unit-report     # SEC 单元储量预评估报告（Word + 可打印 HTML）
 """
 from __future__ import annotations
 
@@ -214,8 +215,33 @@ def cmd_report(args) -> None:
     print("报告已生成：", p)
 
 
+def cmd_unit_report(args) -> None:
+    from .api import services as S
+    from .report.unit_report import build
+    scope = args.scope or S.list_units()["company"]["name"]
+    formats = ("docx", "html") if args.format == "both" else (args.format,)
+    out = build(scope, as_of=args.as_of, scenario=args.scenario, formats=formats)
+    for k in formats:
+        print(f"{'Word' if k == 'docx' else '打印版 HTML'}：{out[k]}")
+    print(f"trace_id={out['trace_id']}")
+
+
 def cmd_serve(args) -> None:
+    import threading
+    import time
     import uvicorn
+
+    if not args.no_warmup:
+        def warm() -> None:
+            from .api import services as S
+            t0 = time.time()
+            try:
+                r = S.warm_unit_evaluations()
+                print(f"单元评估预热完成：读快照 {r['n_from_snapshot']} 项，重算 {r['n_computed']} 项，"
+                      f"耗时 {time.time() - t0:.1f}s", flush=True)
+            except Exception as exc:          # 预热失败不影响服务，页面请求时再按需计算
+                print(f"单元评估预热跳过：{exc}", flush=True)
+        threading.Thread(target=warm, name="unit-warmup", daemon=True).start()
     uvicorn.run("src.api.app:app", host=args.host, port=args.port, reload=False)
 
 
@@ -261,9 +287,17 @@ def main(argv: Optional[list] = None) -> int:
     p.add_argument("--scenario", default="all", choices=["all", "sec", "assessment", "impairment"])
     p.set_defaults(func=cmd_unit_eval)
 
+    p = sub.add_parser("unit-report", help="生成 SEC 单元储量预评估报告（Word / 可打印 HTML）")
+    p.add_argument("--scope", default=None, help="SEC 单元号 / 采油厂 / 公司，默认公司")
+    p.add_argument("--as-of", default=None, help="评估基准日，默认最近一期")
+    p.add_argument("--scenario", default="sec", choices=["sec", "assessment", "impairment"])
+    p.add_argument("--format", default="both", choices=["both", "docx", "html"])
+    p.set_defaults(func=cmd_unit_report)
+
     p = sub.add_parser("serve", help="起 HTTP 服务")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--no-warmup", action="store_true", help="启动时不在后台预热单元评估")
     p.set_defaults(func=cmd_serve)
 
     args = ap.parse_args(argv)

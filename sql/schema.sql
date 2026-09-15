@@ -170,6 +170,21 @@ CREATE TABLE IF NOT EXISTS sec_eval_record (
     PRIMARY KEY (as_of, unit_id, scenario, component)
 );
 
+-- 单元评估快照：内核逐单元评估的完整中间结果（逐井递减拟合、措施效果、新井取值）。
+-- 服务重启后直接读快照、不必重新逐井拟合；指纹覆盖数据、模型、口径、价格册与评估算法源码，
+-- 任一变化旧快照自动作废。它是可随时丢弃的计算缓存，历史评估成果以 sec_eval_record 为准。
+CREATE TABLE IF NOT EXISTS sec_eval_snapshot (
+    unit_id        TEXT NOT NULL,
+    as_of          TEXT NOT NULL,
+    price_deck_id  TEXT NOT NULL,
+    scenario       TEXT NOT NULL,
+    fingerprint    TEXT NOT NULL,
+    payload_json   TEXT NOT NULL,
+    model_version  TEXT,
+    created_at     TEXT,
+    PRIMARY KEY (unit_id, as_of, price_deck_id, scenario)
+);
+
 -- 全链路留痕：任何一次工具调用、任何一次智能体应答都能顺 trace_id 回溯
 CREATE TABLE IF NOT EXISTS audit_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

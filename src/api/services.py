@@ -7,14 +7,17 @@ data_source / trace_id 四个追溯字段。
 from __future__ import annotations
 
 import functools
+import hashlib
 import json
+import threading
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 from .. import db, trace
-from ..config import config, indicators as indicator_spec, path
+from ..config import config, indicators as indicator_spec, path, price_decks
 from ..features.build import align, build, encode, feature_columns
 from ..models import registry
 from ..models.analog_retrieval import _resample_curve
@@ -74,7 +77,8 @@ def reset_cache() -> None:
     _tables.cache_clear()
     _rf_reference.cache_clear()
     _well_agg.cache_clear()
-    for f in (_units, _monthly, _events, _codes, _new_wells, _new_well_model_estimates, _evaluate):
+    for f in (_units, _monthly, _events, _codes, _new_wells, _new_well_model_estimates, _evaluate,
+              _eval_fingerprint):
         f.cache_clear()
     _FIT_CACHE.clear()
     for w in _CACHED:
@@ -659,11 +663,116 @@ def _new_well_model_estimates(as_of: str) -> Dict[str, Dict]:
     return out
 
 
-@functools.lru_cache(maxsize=256)
+_EVAL_MEMO: Dict[Tuple[str, str, str, str], Dict] = {}
+_EVAL_LOCKS: Dict[Tuple[str, str, str, str], threading.Lock] = {}
+_EVAL_GUARD = threading.Lock()
+# 评估算法源码也进快照指纹：改了算法，旧快照自动作废，不会读到按旧口径算的结果
+SNAPSHOT_SOURCES = ("sec/composition.py", "reserves/workload.py", "reserves/dca.py", "sec/economics.py")
+
+
+def _json_default(o):
+    if isinstance(o, np.generic):
+        return o.item()
+    if isinstance(o, (set, tuple)):
+        return list(o)
+    raise TypeError(f"评估结果含不可序列化的类型 {type(o).__name__}")
+
+
+@functools.lru_cache(maxsize=1)
+def _snapshot_ready() -> bool:
+    """老库没有快照表时补建（schema.sql 全部是 IF NOT EXISTS，重复执行无副作用）。"""
+    try:
+        db.init_schema()
+        return True
+    except Exception:
+        return False
+
+
+@functools.lru_cache(maxsize=1)
+def _eval_fingerprint() -> str:
+    """快照指纹：数据、模型、评估口径、价格册、评估算法源码任一变化，指纹就变。"""
+    root = Path(__file__).resolve().parents[1]
+    su, uw = _units()
+    parts = [
+        _bundle()["meta"].get("model_version"),
+        json.dumps(_su(), sort_keys=True, ensure_ascii=False, default=str),
+        json.dumps(price_decks(), sort_keys=True, ensure_ascii=False, default=str),
+        db.read_df("SELECT COUNT(*) AS n, MAX(dt) AS dt, ROUND(SUM(oil_t), 3) AS oil, "
+                   "ROUND(SUM(water_m3), 3) AS water FROM prod_daily").to_json(),
+        db.read_df("SELECT COUNT(*) AS n, MAX(dt) AS dt FROM well_event").to_json(),
+        su.to_json(), uw.sort_values(list(uw.columns)).to_json(),
+        _tables()["master"].sort_values("well_id").to_json(),
+    ] + [(root / f).read_text(encoding="utf-8") for f in SNAPSHOT_SOURCES]
+    h = hashlib.sha1()
+    for p in parts:
+        h.update(str(p).encode("utf-8"))
+        h.update(b"\x00")
+    return h.hexdigest()[:24]
+
+
+def _snapshot_get(unit_id: str, as_of: str, deck: str, scenario: str) -> Optional[Dict]:
+    if not _snapshot_ready():
+        return None
+    try:
+        df = db.read_df("SELECT payload_json FROM sec_eval_snapshot WHERE unit_id = ? AND as_of = ? "
+                        "AND price_deck_id = ? AND scenario = ? AND fingerprint = ?",
+                        (unit_id, as_of, deck, scenario, _eval_fingerprint()))
+    except Exception:
+        return None
+    return json.loads(df["payload_json"].iloc[0]) if len(df) else None
+
+
+def _snapshot_put(unit_id: str, as_of: str, deck: str, scenario: str, ev: Dict) -> None:
+    if not _snapshot_ready():
+        return
+    try:
+        with db.connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO sec_eval_snapshot (unit_id, as_of, price_deck_id, scenario, "
+                "fingerprint, payload_json, model_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (unit_id, as_of, deck, scenario, _eval_fingerprint(),
+                 json.dumps(ev, ensure_ascii=False, default=_json_default),
+                 _bundle()["meta"].get("model_version"), trace.now_iso()))
+    except Exception:
+        pass                  # 快照只为加速；写不进去（库被锁等）不影响本次结果
+
+
 def _evaluate(unit_id: str, as_of: str, deck: str, scenario: str) -> Dict:
-    """单元评估（内核结果原样缓存，调用方不得修改返回的 dict）。
+    """单元评估（结果原样缓存，调用方不得修改返回的 dict）。
+
+    三级取数：进程内缓存 → 库里指纹一致的快照 → 逐井重算并写快照。
+    同一个评估同一时刻只算一次（服务启动预热与页面请求可能并发）。
+    """
+    key = (unit_id, as_of, deck, scenario)
+    hit = _EVAL_MEMO.get(key)
+    if hit is not None:
+        return hit
+    with _EVAL_GUARD:
+        lock = _EVAL_LOCKS.setdefault(key, threading.Lock())
+    with lock:
+        if key not in _EVAL_MEMO:
+            ev = _snapshot_get(*key)
+            if ev is None:
+                ev = _compute_evaluation(*key)
+                _snapshot_put(*key, ev)
+            _EVAL_MEMO[key] = ev
+    return _EVAL_MEMO[key]
+
+
+def _evaluate_cache_clear() -> None:
+    with _EVAL_GUARD:
+        _EVAL_MEMO.clear()
+        _EVAL_LOCKS.clear()
+
+
+_evaluate.cache_clear = _evaluate_cache_clear
+
+
+def _compute_evaluation(unit_id: str, as_of: str, deck: str, scenario: str) -> Dict:
+    """逐井重算一个单元的评估。
 
     deck 与 as_of 分开传：价格修订要用"期末的数据 + 期初的价格册"重算一次。
+    返回值统一过一遍 JSON 往返 —— 与从快照读回的结果逐位一致，首次计算和重启后读快照不会差一个字节。
     """
     su, _ = _units()
     u = su[su["unit_id"] == unit_id].iloc[0]
@@ -672,13 +781,14 @@ def _evaluate(unit_id: str, as_of: str, deck: str, scenario: str) -> Dict:
     mon = _monthly()
     cfg = _su()
     qe = economics.economic_limit_rate(deck, scenario, opex_factor=float(u["opex_factor"]))["q_econ"]
-    return sec_composition.evaluate_unit(
+    ev = sec_composition.evaluate_unit(
         monthly=mon[mon["well_id"].isin(ids)], master=master[master["well_id"].isin(ids)],
         events=_events(), new_wells=_new_wells(as_of), as_of=as_of, q_econ_well=qe,
         period_months=cfg["period_months"], measure_cfg=cfg["measure"],
         min_fit_months=cfg["decline"]["min_fit_months"],
         type_curve_min_history=cfg["type_curve"]["min_history_months"],
         model_estimates=_new_well_model_estimates(as_of), fit_cache=_FIT_CACHE)
+    return json.loads(json.dumps(ev, ensure_ascii=False, default=_json_default))
 
 
 def _composition_frame(unit_ids, as_of: str, deck: str, since_ym: str, start_ym: str) -> pd.DataFrame:
@@ -1192,3 +1302,26 @@ def persist_unit_evaluation(as_of: str, scenarios=SCENARIOS) -> Dict:
         w.cache_clear()
     return dict(trace_id=env["trace_id"], as_of=as_of, price_deck_id=deck,
                 n_records=len(rows), summary=summary)
+
+
+def warm_unit_evaluations() -> Dict:
+    """预热页面最常用的评估：最近两期、SEC 价口径的全部单元，外加对账要用的"期末数据 + 期初价格册"。
+
+    快照在库里时几乎是瞬时的；不在时逐井重算并写入快照，下次重启就不用再算。
+    """
+    su, _ = _units()
+    dates = [str(d) for d in _su()["evaluation_dates"]][-2:]
+    jobs = [(d, economics.deck_for(d)) for d in dates]
+    if len(dates) == 2:
+        jobs.append((dates[1], economics.deck_for(dates[0])))
+    n_snapshot = n_computed = 0
+    for u in su["unit_id"]:
+        for a, deck in jobs:
+            if (u, a, deck, "sec") in _EVAL_MEMO:
+                continue
+            if _snapshot_get(u, a, deck, "sec") is not None:
+                n_snapshot += 1
+            else:
+                n_computed += 1
+            _evaluate(u, a, deck, "sec")
+    return dict(n_from_snapshot=n_snapshot, n_computed=n_computed)
