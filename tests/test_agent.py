@@ -269,6 +269,15 @@ class TestServiceEnvelope(unittest.TestCase):
             for k in self.REQUIRED:
                 self.assertIn(k, out, f"{fn.__name__} 缺少追溯字段 {k}")
 
+    def test_well_list_has_one_row_per_well(self):
+        """标签表存多版口径：井表不能因此出现重复井，也不能混入非当前口径的标签。"""
+        wells = S.list_wells(limit=100000)["wells"]
+        codes = [w["well_code"] for w in wells]
+        self.assertEqual(len(codes), len(set(codes)))
+        self.assertEqual(len(codes), len(S._tables()["master"]))
+        self.assertEqual(set(S._tables()["labels"]["label_def_version"]),
+                         {S._bundle()["meta"]["label_def_version"]})
+
 
 if __name__ == "__main__":
     unittest.main()

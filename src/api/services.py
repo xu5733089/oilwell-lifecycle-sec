@@ -83,9 +83,17 @@ def reset_cache() -> None:
 
 @functools.lru_cache(maxsize=1)
 def _tables():
+    # 标签表按 (well_id, label_def_version) 存多版口径；这里只取当前模型训练所用的版本，
+    # 否则一口井会出现多行，井表重复、标签取到旧口径
+    labels = db.read_df("SELECT * FROM lifecycle_label")
+    if not labels.empty:
+        ver = _bundle()["meta"].get("label_def_version")
+        if ver not in set(labels["label_def_version"]):
+            ver = sorted(labels["label_def_version"].unique())[-1]
+        labels = labels[labels["label_def_version"] == ver].reset_index(drop=True)
     return dict(master=db.read_df("SELECT * FROM well_master"),
                 static=db.read_df("SELECT * FROM geo_static"),
-                labels=db.read_df("SELECT * FROM lifecycle_label"))
+                labels=labels)
 
 
 def _resolve(well_code: str) -> pd.Series:

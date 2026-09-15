@@ -4,219 +4,363 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>油井全生命周期与 SEC 储量预评估平台</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3C16 3 6 15 6 21a10 10 0 0 0 20 0C26 15 16 3 16 3z' fill='%230E8F7F'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3C16 3 6 15 6 21a10 10 0 0 0 20 0C26 15 16 3 16 3z' fill='%231F5BB8'/%3E%3C/svg%3E">
 <style>
 /* ────────────────────────────────────────────────────────────────
    零依赖：不引 Vue / ECharts / 任何 CDN。
    内网装不了 npm 也连不了外网，图表全部手写 SVG。
-   配色经 CVD 校验（三色两两 ΔE ≥ 13，色盲可分辨）。
+   布局：企业业务系统 —— 深色侧栏分组导航 + 白色工作区 + 紧凑表格。
    ──────────────────────────────────────────────────────────────── */
 :root{
-  --paper:#EEF1EE; --surface:#FCFCFB; --surface-2:#E7ECE8; --sunk:#E9EEEA;
-  --ink:#15211D; --ink-2:#3B4941; --muted:#6B7973; --rule:#CDD7D0; --rule-soft:#DFE6E1;
-  /* 分类色：validate_palette.js light / dark 两种模式全项通过（四色相邻 CVD ΔE ≥ 10） */
+  --bg:#F2F4F7; --surface:#FFFFFF; --surface-2:#F7F9FB; --sunk:#F4F6F9;
+  --ink:#1A2332; --ink-2:#3F4A5A; --muted:#667185; --rule:#DCE1E8; --rule-soft:#EBEEF2;
+  --brand:#1F5BB8; --brand-hover:#194C9C; --brand-soft:#EAF1FB; --brand-ink:#1A4F9E;
+  --side:#101B2D; --side-2:#18263D; --side-ink:#C5CEDB; --side-muted:#7D8AA0; --side-rule:#1F2D45;
+  /* 分类色：validate_palette.js 在 #FFFFFF / #141B26 两种表面上全项通过（四色相邻 CVD ΔE ≥ 10） */
   --c1:#0E8F7F; --c2:#C25E12; --c3:#3B4FA8; --c4:#B8487F;
-  --c1-wash:#0E8F7F26; --c2-wash:#C25E1226; --c1-soft:#8CC7BE;
-  --neutral:#A3ACA7; --neutral-2:#6E7A74;
-  --ok:#2C6B47; --warn:#8D6410; --crit:#96382C;
-  --ok-bg:#2C6B4718; --warn-bg:#8D641018; --crit-bg:#96382C18;
-  --shadow:0 1px 2px rgba(20,40,34,.05), 0 10px 26px -18px rgba(20,40,34,.3);
+  --c1-soft:#8CC7BE;
+  --neutral:#A9B1BC; --neutral-2:#6F7A89;
+  --ok:#1E7A4C; --warn:#9A6700; --crit:#B3372B;
+  --ok-bg:#E8F4EE; --warn-bg:#FBF3E0; --crit-bg:#FBECEA;
+  --shadow:0 1px 2px rgba(16,27,45,.06);
+  --shadow-pop:0 6px 24px -6px rgba(16,27,45,.22);
+  --side-w:220px; --nav-active:#1F5BB8;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --paper:#0D1412; --surface:#151D1A; --surface-2:#1D2723; --sunk:#111917;
-  --ink:#E3EAE5; --ink-2:#B9C6BF; --muted:#87958E; --rule:#2C3934; --rule-soft:#233029;
+  --bg:#0B111A; --surface:#141B26; --surface-2:#19212E; --sunk:#111823;
+  --ink:#E3E8EF; --ink-2:#B8C2D0; --muted:#8A95A6; --rule:#283243; --rule-soft:#1F2835;
+  --brand:#5B8FE0; --brand-hover:#77A3E8; --brand-soft:#1A2940; --brand-ink:#8DB3EE;
+  --side:#080D15; --side-2:#131C2B; --side-ink:#C5CEDB; --side-muted:#707D92; --side-rule:#172133; --nav-active:#2A5AA8;
   /* dark 模式单独选步，不是自动翻转 */
   --c1:#19A492; --c2:#D2731F; --c3:#5468C4; --c4:#D0679B;
-  --c1-wash:#19A49230; --c2-wash:#D2731F30; --c1-soft:#2F6F66;
-  --neutral:#56615C; --neutral-2:#8A9690;
-  --ok:#63BE88; --warn:#D3A74E; --crit:#E17E6F;
-  --ok-bg:#63BE8820; --warn-bg:#D3A74E20; --crit-bg:#E17E6F20;
-  --shadow:0 1px 2px rgba(0,0,0,.35), 0 12px 30px -20px rgba(0,0,0,.8);
+  --c1-soft:#2F6F66;
+  --neutral:#566070; --neutral-2:#8A95A5;
+  --ok:#5CBB86; --warn:#D3A74E; --crit:#E57E70;
+  --ok-bg:#16291F; --warn-bg:#2B2413; --crit-bg:#2E1A18;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+  --shadow-pop:0 8px 28px -6px rgba(0,0,0,.7);
 }}
 :root[data-theme="dark"]{
-  --paper:#0D1412; --surface:#151D1A; --surface-2:#1D2723; --sunk:#111917;
-  --ink:#E3EAE5; --ink-2:#B9C6BF; --muted:#87958E; --rule:#2C3934; --rule-soft:#233029;
+  --bg:#0B111A; --surface:#141B26; --surface-2:#19212E; --sunk:#111823;
+  --ink:#E3E8EF; --ink-2:#B8C2D0; --muted:#8A95A6; --rule:#283243; --rule-soft:#1F2835;
+  --brand:#5B8FE0; --brand-hover:#77A3E8; --brand-soft:#1A2940; --brand-ink:#8DB3EE;
+  --side:#080D15; --side-2:#131C2B; --side-ink:#C5CEDB; --side-muted:#707D92; --side-rule:#172133; --nav-active:#2A5AA8;
   --c1:#19A492; --c2:#D2731F; --c3:#5468C4; --c4:#D0679B;
-  --c1-wash:#19A49230; --c2-wash:#D2731F30; --c1-soft:#2F6F66;
-  --neutral:#56615C; --neutral-2:#8A9690;
-  --ok:#63BE88; --warn:#D3A74E; --crit:#E17E6F;
-  --ok-bg:#63BE8820; --warn-bg:#D3A74E20; --crit-bg:#E17E6F20;
-  --shadow:0 1px 2px rgba(0,0,0,.35), 0 12px 30px -20px rgba(0,0,0,.8);
+  --c1-soft:#2F6F66;
+  --neutral:#566070; --neutral-2:#8A95A5;
+  --ok:#5CBB86; --warn:#D3A74E; --crit:#E57E70;
+  --ok-bg:#16291F; --warn-bg:#2B2413; --crit-bg:#2E1A18;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+  --shadow-pop:0 8px 28px -6px rgba(0,0,0,.7);
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;padding:0}
 body{
-  background:var(--paper); color:var(--ink); font-size:14px; line-height:1.6;
+  background:var(--bg); color:var(--ink); font-size:13px; line-height:1.55;
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",
               "Microsoft YaHei","Noto Sans SC",sans-serif;
   -webkit-font-smoothing:antialiased;
 }
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
       font-variant-numeric:tabular-nums}
+.num{font-variant-numeric:tabular-nums}
+svg.ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+a{color:var(--brand)}
+:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.skip{position:absolute;left:-999px;top:8px;z-index:100;background:var(--surface);padding:6px 10px;border-radius:4px}
+.skip:focus{left:8px}
 
-/* ── 顶栏 ── */
-header{background:var(--surface);border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:20}
-.bar{max-width:1400px;margin:0 auto;padding:12px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.brand{font-weight:600;font-size:15.5px;letter-spacing:.01em;white-space:nowrap}
-.brand small{display:block;font-weight:400;font-size:11px;color:var(--muted);letter-spacing:.04em}
+/* ── 侧栏 ── */
+.side{position:fixed;inset:0 auto 0 0;width:var(--side-w);background:var(--side);color:var(--side-ink);
+  display:flex;flex-direction:column;z-index:30}
+.brandbox{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--side-rule);min-height:60px}
+.brandbox .mark{width:28px;height:28px;border-radius:6px;background:var(--brand);display:grid;place-items:center;flex:none}
+.brandbox .mark svg{width:16px;height:16px;fill:#fff}
+.brandbox b{display:block;font-size:14.5px;color:#fff;font-weight:600;letter-spacing:.02em;line-height:1.25}
+.brandbox small{display:block;font-size:11px;color:var(--side-muted);line-height:1.3}
+.navscroll{flex:1;overflow-y:auto;padding:10px 0 16px}
+.ngroup{padding:12px 18px 6px;font-size:11px;letter-spacing:.08em;color:var(--side-muted)}
+.nav a{display:flex;align-items:center;gap:10px;margin:1px 10px;padding:0 10px;height:36px;border-radius:5px;
+  color:var(--side-ink);text-decoration:none;font-size:13px;position:relative}
+.nav a:hover{background:var(--side-2);color:#fff}
+.nav a[aria-current="page"]{background:var(--nav-active);color:#fff;font-weight:500}
+.nav a:focus-visible{outline:2px solid #fff;outline-offset:-2px}
+.sidefoot{border-top:1px solid var(--side-rule);padding:12px 18px;font-size:11px;color:var(--side-muted);line-height:1.7}
+.sidefoot .mono{color:var(--side-ink);font-size:11px}
+
+/* ── 顶栏 + 页头 ── */
+.shell{margin-left:var(--side-w);min-height:100vh;display:flex;flex-direction:column}
+.top{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--rule)}
+.topbar{height:48px;display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--rule-soft)}
+.crumb{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);min-width:0;white-space:nowrap;overflow:hidden}
+.crumb .sep{color:var(--rule)}
+.crumb .cur{color:var(--ink)}
 .spacer{flex:1}
-.chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:2px 9px;border-radius:3px;
-      border:1px solid var(--rule);color:var(--muted);white-space:nowrap}
-.chip.warn{color:var(--warn);border-color:currentColor;background:var(--warn-bg)}
-.chip.ok{color:var(--ok);border-color:currentColor;background:var(--ok-bg)}
-.chip.crit{color:var(--crit);border-color:currentColor;background:var(--crit-bg)}
-.chip.solid{background:var(--sunk)}
-button.ghost{background:none;border:1px solid var(--rule);color:var(--ink-2);border-radius:3px;
-             padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit}
-button.ghost:hover{border-color:var(--c1);color:var(--c1)}
-button.ghost:focus-visible{outline:2px solid var(--c1);outline-offset:1px}
+.iconbtn{width:32px;height:32px;display:grid;place-items:center;border-radius:5px;border:1px solid var(--rule);
+  background:var(--surface);color:var(--ink-2);cursor:pointer}
+.iconbtn:hover{border-color:var(--brand);color:var(--brand)}
+.pagebar{display:flex;align-items:center;gap:10px 16px;padding:10px 20px;flex-wrap:wrap;min-height:54px}
+.pagebar h1{margin:0;font-size:16px;font-weight:600;letter-spacing:.01em;white-space:nowrap}
+.ctx{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;margin-left:auto;min-width:0;max-width:100%}
+.cf{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:100%}
+.cf>label{font-size:12px;color:var(--muted);white-space:nowrap}
+.cf select{min-width:0}
+main{padding:16px 20px 32px;flex:1}
+.view[hidden]{display:none!important}
 
-nav.tabs{max-width:1400px;margin:0 auto;padding:0 22px;display:flex;gap:2px;overflow-x:auto}
-nav.tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);
-  padding:9px 14px;font-size:13.5px;cursor:pointer;font-family:inherit;white-space:nowrap}
-nav.tabs button[aria-selected="true"]{color:var(--c1);border-bottom-color:var(--c1);font-weight:600}
-nav.tabs button:hover{color:var(--ink)}
+/* ── 标签 ── */
+.tag{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:3px;font-size:12px;
+  background:var(--surface-2);border:1px solid var(--rule);color:var(--ink-2);white-space:nowrap;line-height:1}
+.tag.ok{color:var(--ok);background:var(--ok-bg);border-color:transparent}
+.tag.warn{color:var(--warn);background:var(--warn-bg);border-color:transparent}
+.tag.crit{color:var(--crit);background:var(--crit-bg);border-color:transparent}
+.tag.brand{color:var(--brand-ink);background:var(--brand-soft);border-color:transparent}
+.tag .dotc{width:6px;height:6px;border-radius:50%;background:currentColor}
 
-main{max-width:1400px;margin:0 auto;padding:22px}
-section[hidden]{display:none!important}
+/* ── 控件 ── */
+select,input[type=text],textarea{background:var(--surface);color:var(--ink);border:1px solid var(--rule);
+  border-radius:4px;padding:0 8px;height:32px;font-size:13px;font-family:inherit;max-width:100%}
+textarea{height:auto;padding:8px 10px;resize:vertical;line-height:1.55}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.btn{height:32px;padding:0 14px;border-radius:4px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);
+  font-size:13px;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.btn.primary{background:var(--nav-active);border-color:var(--nav-active);color:#fff}
+.btn.primary:hover{filter:brightness(1.12);color:#fff}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.sm{height:26px;padding:0 9px;font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.seg button{height:24px;padding:0 9px;border:0;background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--brand-soft);color:var(--brand-ink);font-weight:500}
+.ibtn{height:24px;padding:0 7px;border:0;background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;
+  display:inline-flex;align-items:center;gap:4px;border-radius:4px}
+.ibtn svg.ic{width:14px;height:14px}
+.ibtn:hover,.ibtn[aria-expanded="true"]{color:var(--brand);background:var(--brand-soft)}
 
-/* ── 卡片与网格 ── */
-.grid{display:grid;gap:14px}
-.g2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr));align-items:start}
-.g4{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
-.g2x2{grid-template-columns:repeat(2,minmax(0,1fr))}
-@media(max-width:520px){.g2x2{grid-template-columns:1fr}}
-.g3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
-.card{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:16px 18px}
-.card h3{margin:0 0 3px;font-size:13.5px;font-weight:600}
-.card .sub{margin:0 0 14px;font-size:11.5px;color:var(--muted)}
-.card.plain{border:0;background:none;padding:0}
+/* ── 布局 ── */
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.row{display:grid;gap:16px;margin-top:16px;align-items:start}
+.row:first-child{margin-top:0}
+.row.c2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.row.c21{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}
+.row.c12{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)}
+@media(max-width:1180px){.row.c2,.row.c21,.row.c12{grid-template-columns:minmax(0,1fr)}}
 
-/* KPI：数字是重点，才用大号 */
-.kpi{display:flex;flex-direction:column;gap:2px}
-.kpi .v{font-size:26px;font-weight:600;line-height:1.15;letter-spacing:-.01em}
-.kpi .k{font-size:11.5px;color:var(--muted)}
-.kpi .n{font-size:11.5px;color:var(--ink-2)}
+/* ── 面板 ── */
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:6px;box-shadow:var(--shadow);min-width:0}
+.ph{display:flex;align-items:center;gap:6px 12px;padding:0 14px 0 16px;min-height:44px;border-bottom:1px solid var(--rule-soft);flex-wrap:wrap}
+.ph h3{margin:0;font-size:13.5px;font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:8px}
+.ph h3::before{content:"";width:3px;height:13px;border-radius:2px;background:var(--brand)}
+.ph .pm{font-size:12px;color:var(--muted);min-width:0;flex:1 1 120px;padding:6px 0}
+.ph .pa{display:flex;align-items:center;gap:6px;margin-left:auto;padding:8px 0}
+.pnote{padding:10px 16px;background:var(--surface-2);border-bottom:1px solid var(--rule-soft);font-size:12px;color:var(--ink-2);line-height:1.7}
+.pnote p{margin:0}
+.pnote p+p{margin-top:4px}
+.pb{padding:14px 16px}
+.pb.flush{padding:0}
+.pfoot{padding:8px 16px;border-top:1px solid var(--rule-soft);font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+/* ── 指标条 ── */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));background:var(--surface);
+  border:1px solid var(--rule);border-radius:6px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px}
+.kpi{padding:12px 16px;border-right:1px solid var(--rule-soft);border-bottom:1px solid var(--rule-soft);margin-right:-1px;margin-bottom:-1px;min-width:0}
+.kl{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kval{font-size:22px;font-weight:600;line-height:1.3;margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.kval small{font-size:12px;font-weight:400;color:var(--muted);margin-left:3px}
+.kn{font-size:11.5px;color:var(--muted);margin-top:1px;line-height:1.45}
+.kn .up{color:var(--ok)} .kn .dn{color:var(--crit)}
+.sw{display:inline-block;width:8px;height:8px;border-radius:2px;flex:none}
+.kpis.inset{box-shadow:none;margin-bottom:12px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));background:var(--surface-2)}
+.kpis.inset .kpi{padding:9px 12px}
+.kpis.inset .kval{font-size:17px}
+
+/* ── 实体页头（单井） ── */
+.ehead{display:flex;align-items:center;gap:10px 28px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);
+  border:1px solid var(--rule);border-radius:6px;box-shadow:var(--shadow);margin-bottom:16px}
+.ehead .et{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ehead .et b{font-size:17px;font-weight:600;letter-spacing:.01em}
+dl.facts{display:flex;flex-wrap:wrap;gap:4px 26px;margin:0}
+dl.facts div{display:flex;flex-direction:column;min-width:0}
+dl.facts dt{font-size:11.5px;color:var(--muted)}
+dl.facts dd{margin:0;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ── 提示条 ── */
+.alert{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:12.5px;line-height:1.6;
+  border:1px solid transparent}
+.alert svg.ic{margin-top:2px}
+.alert.warn{background:var(--warn-bg);color:var(--ink);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.alert.warn svg.ic{color:var(--warn)}
+.alert.crit{background:var(--crit-bg);border-color:color-mix(in srgb,var(--crit) 30%,transparent)}
+.alert.crit svg.ic{color:var(--crit)}
+.alert.info{background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 25%,transparent)}
+.alert.info svg.ic{color:var(--brand)}
+.alert b{font-weight:600}
 
 /* ── 表格 ── */
 .tw{overflow-x:auto}
-table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:420px}
-th{text-align:left;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
-   font-weight:500;padding:7px 10px;border-bottom:1px solid var(--rule);white-space:nowrap}
-td{padding:7px 10px;border-bottom:1px solid var(--rule-soft);vertical-align:top}
-tr:last-child td{border-bottom:0}
-td.num,th.num{text-align:right;font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.dt{border-collapse:collapse;width:100%;font-size:12.5px}
+.dt td{white-space:nowrap}
+.dt td.wrap{white-space:normal;min-width:220px}
+.dt th{text-align:left;font-size:12px;color:var(--muted);font-weight:500;padding:0 12px;height:34px;background:var(--surface-2);
+  border-bottom:1px solid var(--rule);white-space:nowrap;position:sticky;top:0}
+.dt td{padding:0 12px;height:36px;border-bottom:1px solid var(--rule-soft);vertical-align:middle}
+.dt td.wrap{padding-top:7px;padding-bottom:7px;height:auto;line-height:1.5}
+.dt tbody tr:hover td{background:var(--surface-2)}
+.dt tr:last-child td{border-bottom:0}
+.dt .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dt tr.total td{font-weight:600;background:var(--surface-2)}
+.dt tr.click{cursor:pointer}
+.dt tr.grp td{background:var(--sunk);font-size:12px;color:var(--muted);height:30px;font-weight:500}
+.dt td .sub2{color:var(--muted);font-size:11.5px}
+.delta.up{color:var(--ok)} .delta.dn{color:var(--crit)} .delta.flat{color:var(--muted)}
+.tscroll{max-height:420px;overflow:auto}
+.pager{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding:8px 12px;border-top:1px solid var(--rule-soft);font-size:12px;color:var(--muted)}
 
-/* ── 控件 ── */
-select,input[type=text]{background:var(--surface);color:var(--ink);border:1px solid var(--rule);
-  border-radius:3px;padding:5px 9px;font-size:13px;font-family:inherit;max-width:100%}
-select:focus,input:focus{outline:2px solid var(--c1);outline-offset:-1px;border-color:var(--c1)}
-.filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-.filters label{font-size:12px;color:var(--muted)}
-.fgroup{display:inline-flex;gap:8px;align-items:center;max-width:100%}
-.fgroup select{min-width:0}
-.fgroup label{white-space:nowrap}
-button.primary{background:var(--c1);color:#fff;border:0;border-radius:3px;padding:6px 16px;
-  font-size:13px;cursor:pointer;font-family:inherit}
-button.primary:disabled{opacity:.5;cursor:default}
+/* ── 键值列表 ── */
+dl.kv{display:grid;grid-template-columns:max-content 1fr;margin:0;font-size:12.5px}
+dl.kv dt{color:var(--muted);padding:7px 16px 7px 0;border-bottom:1px solid var(--rule-soft);white-space:nowrap}
+dl.kv dd{margin:0;padding:7px 0;border-bottom:1px solid var(--rule-soft);font-variant-numeric:tabular-nums;min-width:0}
+dl.kv dt:nth-last-of-type(1),dl.kv dd:last-child{border-bottom:0}
+
+/* ── 子页签 ── */
+.subtabs{display:flex;gap:2px;border-bottom:1px solid var(--rule);margin:0 0 16px;overflow-x:auto}
+.subtabs button{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;color:var(--muted);height:38px;
+  padding:0 14px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.subtabs button:hover{color:var(--ink)}
+.subtabs button[aria-selected="true"]{color:var(--brand);border-bottom-color:var(--brand);font-weight:600}
+.subtabs .cnt{display:inline-block;margin-left:5px;padding:0 6px;border-radius:9px;background:var(--surface-2);border:1px solid var(--rule-soft);
+  font-size:11px;color:var(--muted);font-weight:400;line-height:16px}
 
 /* ── 图表 ── */
 figure{margin:0}
 figure svg{display:block;width:100%;height:auto;overflow:visible}
-figcaption{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.55}
-.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-bottom:8px}
+figcaption{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
+.legend{display:flex;gap:4px 14px;flex-wrap:wrap;font-size:12px;color:var(--ink-2);margin-bottom:8px}
 .legend i{display:inline-block;width:12px;height:2.5px;border-radius:2px;margin-right:5px;vertical-align:middle}
 .legend i.band{height:9px;border-radius:2px;opacity:.5}
 .legend i.dash{background:none;border-top:2px dashed var(--muted);height:0}
+.legend i.box{height:9px;width:9px;border-radius:2px}
+.legend i.dot{height:9px;width:9px;border-radius:50%}
 .tip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--rule);
-  border-radius:4px;padding:7px 10px;font-size:11.5px;box-shadow:var(--shadow);z-index:60;
-  opacity:0;transition:opacity .08s;max-width:260px}
+  border-radius:5px;padding:7px 10px;font-size:12px;box-shadow:var(--shadow-pop);z-index:60;
+  opacity:0;transition:opacity .08s;max-width:280px}
 .tip b{font-weight:600}
 .tip .row{display:flex;gap:10px;justify-content:space-between}
 .tip .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px}
+.minis{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 20px}
+.mini h4{margin:0 0 2px;font-size:12.5px;font-weight:600}
+.mini .kn{margin-bottom:4px}
 
-/* ── 检查清单 / 诊断 ── */
+/* ── 检查清单 / 发现 ── */
 .chk{list-style:none;margin:0;padding:0}
-.chk li{display:grid;grid-template-columns:74px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule-soft);font-size:12.5px}
+.chk li{display:grid;grid-template-columns:86px 1fr;gap:10px;padding:10px 16px;border-bottom:1px solid var(--rule-soft);font-size:12.5px}
 .chk li:last-child{border-bottom:0}
-.chk .it{font-weight:600}
-.chk .ev{color:var(--ink-2);font-size:11.5px;margin-top:2px}
+.chk .it{font-weight:500}
+.chk .ev{color:var(--ink-2);font-size:12px;margin-top:2px}
 .chk .ct{color:var(--muted);font-size:11px;margin-top:2px}
-.finding{border-left:2px solid var(--rule);padding:8px 0 8px 12px;margin-bottom:8px;font-size:12.5px}
-.finding.warn{border-left-color:var(--warn)}
-.finding.critical{border-left-color:var(--crit)}
-.finding.info{border-left-color:var(--ok)}
-.finding .act{color:var(--muted);font-size:11.5px;margin-top:3px}
+.finding{display:grid;grid-template-columns:3px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule-soft);font-size:12.5px}
+.finding:last-child{border-bottom:0}
+.finding::before{content:"";border-radius:2px;background:var(--rule)}
+.finding.warn::before{background:var(--warn)} .finding.critical::before{background:var(--crit)} .finding.info::before{background:var(--ok)}
+.finding .act{color:var(--muted);font-size:12px;margin-top:2px}
 
-/* ── 对话 ── */
-.chatgrid{display:grid;grid-template-columns:1fr;gap:14px}
-@media(min-width:1100px){.chatgrid{grid-template-columns:minmax(0,1.35fr) minmax(320px,.95fr)}}
-.answer{white-space:pre-wrap;font-size:13px;line-height:1.72;background:var(--sunk);
-  border:1px solid var(--rule-soft);border-radius:4px;padding:14px 16px;max-height:520px;overflow:auto}
-.trace{display:flex;flex-direction:column;gap:0}
-.tstep{display:grid;grid-template-columns:20px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule-soft)}
+/* ── 智能问答 ── */
+.chat{display:grid;grid-template-columns:240px minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media(max-width:1280px){.chat{grid-template-columns:220px minmax(0,1fr)}.chat .trace-col{grid-column:1/-1}}
+@media(max-width:900px){.chat{grid-template-columns:minmax(0,1fr)}.chat .qcol{order:2}.chat .trace-col{order:3}}
+.qlist{padding:6px 0}
+.qlist .qg{padding:10px 16px 4px;font-size:11.5px;color:var(--muted)}
+.qlist button{display:block;width:100%;text-align:left;background:none;border:0;padding:7px 16px;font-size:12.5px;color:var(--ink-2);
+  cursor:pointer;font-family:inherit;line-height:1.45}
+.qlist button:hover{background:var(--brand-soft);color:var(--brand-ink)}
+.ameta{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.answer{white-space:pre-wrap;font-size:13px;line-height:1.75;min-height:260px;max-height:560px;overflow:auto;color:var(--ink)}
+.answer.placeholder{color:var(--muted)}
+.composer{border-top:1px solid var(--rule-soft);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.composer textarea{width:100%}
+.composer .cbar{display:flex;align-items:center;gap:10px}
+.composer .hint{font-size:11.5px;color:var(--muted)}
+.trace{padding:4px 16px}
+.tstep{display:grid;grid-template-columns:18px 1fr;gap:8px;padding:9px 0;border-bottom:1px solid var(--rule-soft)}
 .tstep:last-child{border-bottom:0}
-.tdot{width:9px;height:9px;border-radius:50%;background:var(--c1);margin-top:5px}
+.tdot{width:8px;height:8px;border-radius:50%;background:var(--ok);margin-top:6px}
+.tstep.idle .tdot{background:var(--rule)}
 .tstep.failed .tdot,.tstep.denied .tdot{background:var(--crit)}
-.tname{font-size:12.5px;font-weight:600}
-.targs{font-size:11px;color:var(--muted);word-break:break-all}
-.terr{font-size:11.5px;color:var(--crit)}
-.examples{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.exgroup{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.exlabel{font-size:11.5px;color:var(--muted);min-width:64px}
-.examples button{background:var(--sunk);border:1px solid var(--rule-soft);color:var(--ink-2);
-  border-radius:12px;padding:3px 11px;font-size:11.5px;cursor:pointer;font-family:inherit}
-.examples button:hover{border-color:var(--c1);color:var(--c1)}
+.tname{font-size:12.5px;font-weight:500;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.targs{font-size:11px;color:var(--muted);word-break:break-all;margin-top:2px}
+.terr{font-size:12px;color:var(--crit)}
 
-.empty{color:var(--muted);font-size:12.5px;padding:22px 0;text-align:center}
-
-/* ── SEC 单元页 ── */
-.g5{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
-.stat{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:12px 14px}
-.stat .v{font-size:22px;font-weight:600;line-height:1.2}
-.inset .stat{background:var(--sunk);border-color:var(--rule-soft)}
-.legend i.box{height:9px;width:9px;border-radius:2px}
-.legend i.dot{height:9px;width:9px;border-radius:50%}
-.sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
-details.tv{margin-top:10px}
-details.tv summary{cursor:pointer;font-size:12px;color:var(--muted);user-select:none}
-details.tv summary:hover{color:var(--c1)}
-.block h4{margin:0 0 2px;font-size:12.5px;font-weight:600}
+/* ── 状态 ── */
+.busy{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--muted);font-size:12.5px;padding:48px 16px;text-align:center}
+.busy::before{content:"";width:16px;height:16px;border-radius:50%;border:2px solid var(--rule);border-top-color:var(--brand);
+  animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{color:var(--muted);font-size:12.5px;padding:28px 16px;text-align:center}
 .err{color:var(--crit);font-size:12.5px}
+.muted{color:var(--muted)}
+
+/* ── 窄屏：侧栏变为顶部横向导航 ── */
+@media(max-width:900px){
+  .side{position:static;width:auto;flex-direction:column}
+  .brandbox{min-height:0;padding:10px 16px}
+  .navscroll{padding:0 8px 8px;overflow-x:auto;overflow-y:hidden}
+  .nav{display:flex;gap:2px;width:max-content}
+  .ngroup,.sidefoot{display:none}
+  .nav a{margin:0;height:34px;white-space:nowrap}
+  .shell{margin-left:0}
+  .top{position:static}
+  .topbar{padding:0 16px}
+  .pagebar{padding:10px 16px}
+  .ctx{margin-left:0}
+  main{padding:14px 16px 28px}
+  .kval{font-size:19px}
+}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
+<a class="skip" href="#main">跳到主内容</a>
 
-<header>
-  <div class="bar">
-    <div class="brand">油井全生命周期与 SEC 储量预评估平台
-      <small>大庆油田"人工智能+"青年创新比赛 · 勘探开发研究院</small></div>
-    <div class="spacer"></div>
-    <span class="chip warn" id="dsBadge" hidden></span>
-    <span class="chip solid mono" id="mvBadge">—</span>
-    <button class="ghost" id="themeBtn" type="button">深色</button>
+<aside class="side">
+  <div class="brandbox">
+    <div class="mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3C16 3 6 15 6 21a10 10 0 0 0 20 0C26 15 16 3 16 3z"/></svg></div>
+    <div><b>储量评估系统</b><small>全生命周期 · SEC 预评估</small></div>
   </div>
-  <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="overview" aria-selected="true">总览</button>
-    <button role="tab" data-tab="well" aria-selected="false">单井工作台</button>
-    <button role="tab" data-tab="reserves" aria-selected="false">储量与 SEC</button>
-    <button role="tab" data-tab="unit" aria-selected="false">SEC 构成评估</button>
-    <button role="tab" data-tab="monitor" aria-selected="false">运行监控</button>
-    <button role="tab" data-tab="chat" aria-selected="false">智能体对话</button>
-    <button role="tab" data-tab="eval" aria-selected="false">评测</button>
-  </nav>
-</header>
+  <div class="navscroll">
+    <nav class="nav" id="nav" aria-label="主导航"></nav>
+  </div>
+  <div class="sidefoot">
+    <div>模型版本 <span class="mono" id="mvBadge">—</span></div>
+    <div>标签口径 <span class="mono" id="ldBadge">—</span></div>
+  </div>
+</aside>
 
-<main>
-  <section id="tab-overview"></section>
-  <section id="tab-well" hidden></section>
-  <section id="tab-reserves" hidden></section>
-  <section id="tab-unit" hidden></section>
-  <section id="tab-monitor" hidden></section>
-  <section id="tab-chat" hidden></section>
-  <section id="tab-eval" hidden></section>
-</main>
+<div class="shell">
+  <header class="top">
+    <div class="topbar">
+      <div class="crumb" id="crumb"></div>
+      <div class="spacer"></div>
+      <span class="tag warn" id="dsBadge" hidden></span>
+      <button class="iconbtn" id="themeBtn" type="button" aria-label="切换深浅色"></button>
+    </div>
+    <div class="pagebar">
+      <h1 id="ptitle">总览</h1>
+      <div class="ctx" id="ctx"></div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="view" id="tab-overview"></section>
+    <section class="view" id="tab-well" hidden></section>
+    <section class="view" id="tab-reserves" hidden></section>
+    <section class="view" id="tab-unit" hidden></section>
+    <section class="view" id="tab-monitor" hidden></section>
+    <section class="view" id="tab-chat" hidden></section>
+    <section class="view" id="tab-eval" hidden></section>
+  </main>
+</div>
 
 <div class="tip" id="tip"></div>
 
@@ -683,10 +827,12 @@ function dumbbell(host, rows, cfg) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   3. 通用片段
+   3. 通用片段（企业系统组件：面板、指标条、实体页头、表格、子页签）
    ══════════════════════════════════════════════════════════════ */
 const STATUS_CN = { pass: '通过', fail: '不通过', needs_human: '需人工确认' };
 const STATUS_CLS = { pass: 'ok', fail: 'crit', needs_human: 'warn' };
+const WELL_STATUS_CN = { producing: '在产', shut_in: '关井', suspended: '停产', abandoned: '报废' };
+const CONSIST_CN = { consistent: '一致', conflict: '冲突', inconclusive: '无法判定', marginal: '偏差较大' };
 const TARGET_CN = { t_oil_break: '见油时间', t_peak: '达峰时间', q_peak: '达峰产量', p_peak: '达峰压力', eur: 'EUR' };
 const FEATURE_CN = {
   cum_30d: '前 30 天累产', cum_60d: '前 60 天累产', cum_90d: '前 90 天累产', cum_obs: '观测窗累产',
@@ -702,151 +848,298 @@ const FEATURE_CN = {
   nb_p_peak_med: '邻井达峰压力中位数', nb_t_peak_iqr: '邻井达峰时间离散度', nb_eur_med: '邻井 EUR 中位数', nb_count: '邻井数'
 };
 
-const card = (title, sub, body) => el('div', { class: 'card' },
-  [el('h3', { text: title }), sub ? el('p', { class: 'sub', text: sub }) : null,
-  ...(Array.isArray(body) ? body : [body])].filter(Boolean));
+/* 线性图标（同一套笔画宽度），导航与按钮共用 */
+const ICON = {
+  dash: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  trend: '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
+  db: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  layers: '<path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/>',
+  bars: '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M2 20h20"/>',
+  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  check: '<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  alert: '<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17h.01"/>',
+  send: '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>'
+};
+const icon = name => {
+  const t = document.createElement('template');
+  t.innerHTML = `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[name] || ''}</svg>`;
+  return t.content.firstChild;
+};
 
-const kpi = (label, value, note) => el('div', { class: 'card' },
-  el('div', { class: 'kpi' }, [
-    el('span', { class: 'k', text: label }),
-    el('span', { class: 'v', text: value }),
-    note ? el('span', { class: 'n', text: note }) : null].filter(Boolean)));
+/* 吨数拆成"数值 + 单位"，单位在指标条里用小号字 */
+const tU = v => (v === null || v === undefined) ? { value: '—' }
+  : Math.abs(v) >= 1e4 ? { value: fmt(v / 1e4, 2), unit: '万 t' } : { value: fmt(v, 0), unit: 't' };
+const signed = (v, d = 0) => (v > 0 ? '+' : '') + fmt(v, d);
 
-function table(cols, rows) {
-  const t = el('table', {}, [
-    el('thead', {}, el('tr', {}, cols.map(c => el('th', { class: c.num ? 'num' : '', text: c.h })))),
-    el('tbody', {}, rows.map(r => el('tr', {}, cols.map(c => {
-      const v = r[c.k];
-      if (c.render) return el('td', { class: c.num ? 'num' : '' }, c.render(r));
-      return el('td', { class: c.num ? 'num' : '', text: v === null || v === undefined ? '—' : (c.num ? fmt(v, c.d ?? 2) : String(v)) });
-    }))))]);
-  return el('div', { class: 'tw' }, t);
+const tag = (text, kind) => el('span', { class: 'tag' + (kind ? ' ' + kind : '') }, text);
+const loading = text => el('div', { class: 'busy', role: 'status', text: text || '加载中…' });
+const emptyState = text => el('div', { class: 'empty', text });
+const alertBar = (kind, title, text) => el('div', { class: 'alert ' + kind, role: kind === 'crit' ? 'alert' : null }, [
+  icon(kind === 'info' ? 'info' : 'alert'),
+  el('div', {}, [title ? el('b', { text: title }) : null, title && text ? '　' : null, text || null])]);
+
+/* 面板：标题栏（标题 · 摘要 · 操作）+ 可折叠的口径说明 + 主体；有 table 时右上角出现"图表/表格"切换 */
+function panel(title, opts = {}, body) {
+  const pa = el('div', { class: 'pa' }, opts.actions || []);
+  const p = el('section', { class: 'panel' + (opts.cls ? ' ' + opts.cls : '') });
+  p.appendChild(el('div', { class: 'ph' }, [el('h3', { text: title }),
+    opts.meta ? el('div', { class: 'pm' }, opts.meta) : null, pa]));
+  const notes = [].concat(opts.note || []).filter(Boolean);
+  if (notes.length) {
+    const note = el('div', { class: 'pnote', hidden: true }, notes.map(t => el('p', { text: t })));
+    const b = el('button', { class: 'ibtn', type: 'button', 'aria-expanded': 'false', title: '口径与说明' }, [icon('info'), '口径']);
+    b.addEventListener('click', () => { note.hidden = !note.hidden; b.setAttribute('aria-expanded', String(!note.hidden)); });
+    pa.appendChild(b); p.appendChild(note);
+  }
+  const bodyEl = el('div', { class: 'pb' + (opts.flush ? ' flush' : ''), style: opts.bodyStyle || null }, [].concat(body).filter(Boolean));
+  p.appendChild(bodyEl);
+  if (opts.table) {
+    const tb = el('div', { class: 'pb flush', hidden: true }, opts.table);
+    const bC = el('button', { type: 'button', 'aria-pressed': 'true', text: '图表' });
+    const bT = el('button', { type: 'button', 'aria-pressed': 'false', text: '表格' });
+    const set = showTable => {
+      tb.hidden = !showTable; bodyEl.hidden = showTable; hideTip();
+      bC.setAttribute('aria-pressed', String(!showTable)); bT.setAttribute('aria-pressed', String(showTable));
+    };
+    bC.addEventListener('click', () => set(false)); bT.addEventListener('click', () => set(true));
+    pa.insertBefore(el('div', { class: 'seg', role: 'group', 'aria-label': '视图切换' }, [bC, bT]), pa.firstChild);
+    p.appendChild(tb);
+  }
+  if (opts.foot) p.appendChild(el('div', { class: 'pfoot' }, opts.foot));
+  return p;
+}
+
+/* 指标条：一行等宽格子，数值是主角；标识色只放在标签前的色块上 */
+const kpiStrip = items => el('div', { class: 'kpis' }, items.filter(Boolean).map(i => el('div', { class: 'kpi' }, [
+  el('div', { class: 'kl', title: i.label }, [i.sw ? el('i', { class: 'sw', style: `background:${i.sw}` }) : null, i.label]),
+  el('div', { class: 'kval' }, [String(i.value), i.unit ? el('small', { text: i.unit }) : null]),
+  i.note !== undefined && i.note !== null ? el('div', { class: 'kn' }, i.note) : null])));
+
+const kv = pairs => el('dl', { class: 'kv' }, pairs.filter(Boolean).flatMap(([k, v]) =>
+  [el('dt', { text: k }), el('dd', {}, (v !== null && typeof v === 'object') ? v : String(v ?? '—'))]));
+
+function table(cols, rows, opts = {}) {
+  const t = el('table', { class: 'dt' }, [
+    el('thead', {}, el('tr', {}, cols.map(c => el('th', { class: c.num ? 'num' : null, text: c.h })))),
+    el('tbody', {}, rows.map(r => {
+      if (r._group) return el('tr', { class: 'grp' }, el('td', { colspan: cols.length, text: r._group }));
+      const tr = el('tr', { class: [r._cls, opts.onRow ? 'click' : null].filter(Boolean).join(' ') || null }, cols.map(c => {
+        const cls = [c.num ? 'num' : null, c.cls].filter(Boolean).join(' ') || null;
+        if (c.render) return el('td', { class: cls }, c.render(r));
+        const v = r[c.k];
+        return el('td', { class: cls, text: (v === null || v === undefined || Number.isNaN(v)) ? '—' : (c.num ? fmt(v, c.d ?? 2) : String(v)) });
+      }));
+      if (opts.onRow) {
+        tr.tabIndex = 0;
+        tr.addEventListener('click', () => opts.onRow(r));
+        tr.addEventListener('keydown', e => { if (e.key === 'Enter') opts.onRow(r); });
+      }
+      return tr;
+    }))]);
+  return el('div', { class: 'tw' + (opts.scroll ? ' tscroll' : '') }, t);
 }
 
 const legend = items => el('div', { class: 'legend' }, items.map(i =>
   el('span', {}, [el('i', { class: i.kind || '', style: i.color ? `background:${i.color}` : '' }), i.name])));
 
-/* 统计卡：大号数字用比例数字（不用等宽），标识色放在标签前的色块上，文字始终用正文色 */
-const stat = (label, value, note, sw) => el('div', { class: 'stat kpi' }, [
-  el('span', { class: 'k' }, [sw ? el('i', { class: 'sw', style: `background:${sw}` }) : null, label].filter(Boolean)),
-  el('span', { class: 'v', text: value }),
-  note ? el('span', { class: 'n', text: note }) : null].filter(Boolean));
-const tableView = (cols, rows) => el('details', { class: 'tv' }, [el('summary', { text: '表格视图' }), table(cols, rows)]);
-const block = (title, sub, body) => el('div', { class: 'block' }, [el('h4', { text: title }),
-  sub ? el('p', { class: 'sub', style: 'margin:0 0 8px', text: sub }) : null, ...(Array.isArray(body) ? body : [body])].filter(Boolean));
+/* 变化量：箭头 + 数字，不单靠颜色 */
+const delta = (v, d = 1, suffix = '') => (v === null || v === undefined || Number.isNaN(v)) ? el('span', { class: 'delta flat', text: '—' })
+  : el('span', { class: 'delta ' + (v > 0 ? 'up' : v < 0 ? 'dn' : 'flat'), text: (v > 0 ? '▲ ' : v < 0 ? '▼ ' : '— ') + fmt(Math.abs(v), d) + suffix });
+
+const entityHead = (title, tags, facts) => el('div', { class: 'ehead' }, [
+  el('div', { class: 'et' }, [el('b', { text: title }), ...tags.filter(Boolean)]),
+  el('dl', { class: 'facts' }, facts.filter(Boolean).map(([k, v]) => el('div', {}, [el('dt', { text: k }), el('dd', { text: v })])))]);
+
+function wellHead(info) {
+  const w = S.wells.find(x => x.well_code === info.well_code) || {};
+  const horiz = info.lateral_length && info.stage_count;
+  return entityHead(info.well_code, [
+    tag(`${info.block} / ${info.layer}`), tag(info.well_type),
+    tag(WELL_STATUS_CN[info.status] || info.status, info.status === 'producing' ? 'ok' : null),
+    w.is_new ? tag('新井', 'brand') : tag('老井')
+  ], [
+    ['投产日期', info.first_prod_date], ['生产天数', fmt(info.history_days, 0) + ' d'],
+    ['累产油', fmt(info.cum_oil_t, 0) + ' t'], [`近 ${info.rate_window_days} 天日产`, fmt(info.current_rate_t_per_d) + ' t/d'],
+    ['含水', fmt(info.water_cut_pct, 1) + '%'], ['井口压力', fmt(info.latest_whp_mpa) + ' MPa'],
+    horiz ? ['水平段 / 段数', `${fmt(info.lateral_length, 0)} m / ${info.stage_count} 段`] : null]);
+}
+
+function subTabs(items, active, onChange) {
+  const bar = el('div', { class: 'subtabs', role: 'tablist' });
+  items.forEach(i => {
+    const b = el('button', { type: 'button', role: 'tab', 'aria-selected': String(i.k === active), 'data-k': i.k },
+      [i.label, i.cnt !== undefined ? el('span', { class: 'cnt', text: String(i.cnt) }) : null]);
+    b.addEventListener('click', () => {
+      bar.querySelectorAll('button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+      hideTip(); onChange(i.k);
+    });
+    bar.appendChild(b);
+  });
+  return bar;
+}
+
+/* 页头右侧的全局筛选：只写入当前页，异步返回时页面已切走就丢弃 */
+function setCtx(page, nodes) { if (S.page === page) $('#ctx').replaceChildren(...nodes.filter(Boolean)); }
+let _fid = 0;
+const ctxField = (label, ctl) => {
+  ctl.id = 'f' + (++_fid);
+  return el('span', { class: 'cf' }, [el('label', { for: ctl.id, text: label }), ctl]);
+};
 
 /* ══════════════════════════════════════════════════════════════
    4. 各页面
    ══════════════════════════════════════════════════════════════ */
-const S = { wells: [], overview: null, current: null };
+const S = { wells: [], overview: null, current: null, page: null, ovBlock: 'all', wl: { q: '', page: 0 },
+  unitSub: 'comp', nwFilter: 'all', tok: { well: 0, reserves: 0, unit: 0, monitor: 0 } };
 const BLOCK_COLORS = () => ({ 'GL-A': cssVar('--c1'), 'GL-B': cssVar('--c2'), 'SB-C': cssVar('--c3') });
+const go = name => { location.hash = '#/' + name; };
+function pickWell(code) { S.current = code; }
 
-async function renderOverview() {
-  const host = $('#tab-overview'); host.innerHTML = '<p class="empty">加载中…</p>';
-  const [ov, wl] = await Promise.all([api('/overview'), api('/wells', { limit: 400 })]);
-  S.overview = ov; S.wells = wl.wells;
-  if (!S.current) {
-    const old = S.wells.find(w => !w.is_new && w.status === 'producing' && w.eur != null);
-    S.current = (old || S.wells[0] || {}).well_code;
+async function ensureBase() {
+  if (!S.base) {
+    S.base = Promise.all([api('/overview'), api('/wells', { limit: 1000 })]).then(([ov, wl]) => {
+      S.overview = ov; S.wells = wl.wells;
+      if (!S.current) {
+        const old = S.wells.find(w => !w.is_new && w.status === 'producing' && w.eur != null);
+        S.current = (old || S.wells[0] || {}).well_code;
+      }
+      $('#mvBadge').textContent = ov.model.model_version;
+      $('#ldBadge').textContent = ov.label_def_version;
+      if (ov.data_source !== 'REAL') {
+        const b = $('#dsBadge'); b.hidden = false;
+        b.replaceChildren(el('i', { class: 'dotc' }), `模拟数据 · ${ov.data_source}`);
+      }
+    }).catch(e => { S.base = null; throw e; });
   }
-  $('#mvBadge').textContent = ov.model.model_version;
-  if (ov.data_source !== 'REAL') {
-    const b = $('#dsBadge'); b.hidden = false;
-    b.textContent = `模拟数据（data_source=${ov.data_source}）`;
-  }
-  host.innerHTML = '';
-
-  host.appendChild(el('div', { class: 'grid g3', style: 'margin-bottom:14px' }, [
-    kpi('井数', fmt(ov.data.n_wells, 0), `${ov.data.blocks.join(' · ')}｜其中新井 ${ov.data.n_new_wells} 口`),
-    kpi('累产油', fmt(ov.data.cum_oil_t / 1e4, 1) + ' 万 t', `${fmt(ov.data.n_wells_with_prod, 0)} 口井有生产记录`),
-    kpi('可用标签井', fmt(ov.data.n_labeled, 0), `质量门禁通过率 ${fmt(ov.quality.pass_rate * 100, 1)}%`),
-    kpi('训练/校准/测试', `${ov.model.n_train}/${ov.model.n_calib}/${ov.model.n_test}`,
-      `切分方式：${ov.model.split_method === 'time' ? '按投产年份时间外推' : ov.model.split_method}`)]));
-
-  const mapCard = card('井位分布', '颜色=区块，大小=累产，实心描边=投产不足 420 天的新井。点击选井。', el('figure'));
-  const fig = $('figure', mapCard);
-  fig.appendChild(el('div', { class: 'legend' }, Object.entries(BLOCK_COLORS()).map(([b, c]) =>
-    el('span', {}, [el('i', { style: `background:${c};height:9px;border-radius:50%;width:9px` }), b]))));
-  const plot = el('div'); fig.appendChild(plot);
-  fig.appendChild(el('figcaption', { text: '坐标已统一偏移，不可反推真实井位。' }));
-  scatter(plot, S.wells, 'block', BLOCK_COLORS(), code => { pickWell(code); switchTab('well'); });
-
-  const rep = ov.report || {};
-  const rows = Object.entries(rep).map(([k, r]) => ({
-    target: TARGET_CN[k] || k, mae: r.model.mae, base: r.baseline.mae,
-    gain: r.mae_gain_vs_baseline_pct, cov: r.model.coverage, cov0: r.model_uncalibrated.coverage
-  }));
-  const metricCard = card('算法层指标', '回测集为已走完主要生产周期的老井；基线 = 邻井类比 + Arps 外推。',
-    table([{ h: '目标', k: 'target' }, { h: '模型 MAE', k: 'mae', num: true },
-    { h: '基线 MAE', k: 'base', num: true },
-    { h: '相对基线', k: 'gain', num: true, render: r => el('span', { class: 'chip ok', text: (r.gain ?? 0) + '%' }) },
-    { h: '区间覆盖率', k: 'cov', num: true },
-    { h: '校准前', k: 'cov0', num: true }], rows));
-  metricCard.appendChild(el('p', { class: 'sub', style: 'margin:10px 0 0',
-    text: '"校准前"一列是保形校准的价值：名义 80% 的区间，校准前实际只覆盖四到五成。' }));
-
-  const qRows = Object.entries(ov.quality.top_reasons || {}).map(([k, v]) => ({ reason: k, n: v }));
-  const qCard = card('数据质量门禁',
-    `${ov.quality.n_passed}/${ov.quality.n_wells} 口井通过；未通过的进隔离区，不进训练集。`,
-    qRows.length ? table([{ h: '未通过原因', k: 'reason' }, { h: '井数', k: 'n', num: true, d: 0 }], qRows)
-      : el('p', { class: 'empty', text: '全部通过' }));
-
-  host.appendChild(el('div', { class: 'grid', style: 'margin-bottom:14px' }, mapCard));
-  host.appendChild(el('div', { class: 'grid g2' }, [metricCard, qCard]));
+  return S.base;
 }
 
-/* ── 单井工作台 ── */
+/* ── 总览 ── */
+async function renderOverview() {
+  const host = $('#tab-overview');
+  host.replaceChildren(loading());
+  await ensureBase();
+  if (S.page !== 'overview') return;
+  const ov = S.overview;
+  const blockSel = el('select', { onchange: e => { S.ovBlock = e.target.value; S.wl.page = 0; renderOverview(); } },
+    [el('option', { value: 'all', text: '全部区块' }), ...ov.data.blocks.map(b => el('option', { value: b, text: b }))]);
+  blockSel.value = S.ovBlock;
+  setCtx('overview', [ctxField('区块', blockSel)]);
+
+  const wells = S.wells.filter(w => S.ovBlock === 'all' || w.block === S.ovBlock);
+  const nNew = wells.filter(w => w.is_new).length;
+  const cum = wells.reduce((a, w) => a + (w.cum_oil_t || 0), 0);
+  const strip = kpiStrip([
+    { label: S.ovBlock === 'all' ? '井数' : `井数 · ${S.ovBlock}`, value: fmt(wells.length, 0), unit: '口', note: `老井 ${wells.length - nNew} · 新井 ${nNew}` },
+    { label: '累产油', ...tU(cum), note: `${S.ovBlock === 'all' ? ov.data.blocks.length + ' 个区块' : S.ovBlock}合计` },
+    { label: '可用标签', value: fmt(ov.data.n_labeled, 0), unit: '条', note: `标签口径 ${ov.label_def_version}` },
+    { label: '质量门禁通过率', value: fmt(ov.quality.pass_rate * 100, 1), unit: '%', note: `${ov.quality.n_passed} / ${ov.quality.n_wells} 口井通过` },
+    { label: '训练 / 校准 / 测试', value: `${ov.model.n_train} / ${ov.model.n_calib} / ${ov.model.n_test}`, note: ov.model.split_method === 'time' ? '按投产年份时间外推切分' : ov.model.split_method }]);
+
+  const colors = BLOCK_COLORS();
+  const plot = el('div');
+  scatter(plot, wells, 'block', colors, code => { pickWell(code); go('well'); });
+  const mapPanel = panel('井位分布', {
+    meta: '颜色 = 区块 · 大小 = 累产 · 深色描边 = 新井 · 点击井位进入单井分析',
+    note: ['坐标已统一偏移，不可反推真实井位。', '新井指投产不足 420 天、尚未走完主要生产周期的井。']
+  }, [legend(Object.entries(colors).map(([b, c]) => ({ name: b, color: c, kind: 'dot' }))), el('figure', {}, plot)]);
+
+  const rep = ov.report || {};
+  const bt = Object.entries(rep).map(([k, r]) => ({
+    target: TARGET_CN[k] || k, mae: r.model.mae, base: r.baseline.mae,
+    gain: r.mae_gain_vs_baseline_pct, cov: r.model.coverage, cov0: r.model_uncalibrated.coverage }));
+  const btPanel = panel('预测模型回测', {
+    meta: `测试集 ${ov.model.n_test} 口老井`, flush: true,
+    note: ['回测集为已走完主要生产周期的老井；基线 = 邻井类比 + Arps 外推。',
+      '"校准前"一列是保形校准的价值：名义 80% 的区间，校准前实际只覆盖四到五成。']
+  }, table([{ h: '目标', k: 'target' }, { h: '模型 MAE', k: 'mae', num: true }, { h: '基线 MAE', k: 'base', num: true },
+    { h: '较基线', k: 'gain', num: true, render: r => tag(`${r.gain > 0 ? '↓' : ''}${fmt(Math.abs(r.gain ?? 0), 1)}%`, (r.gain ?? 0) > 0 ? 'ok' : 'crit') },
+    { h: '覆盖率', k: 'cov', num: true }, { h: '校准前', k: 'cov0', num: true }], bt));
+
+  const qRows = Object.entries(ov.quality.top_reasons || {}).map(([k, v]) => ({ reason: k, n: v }));
+  const qPanel = panel('数据质量门禁', {
+    meta: `${ov.quality.n_passed} / ${ov.quality.n_wells} 通过 · 未通过的进隔离区，不进训练集`, flush: true
+  }, qRows.length ? table([{ h: '未通过原因（前 5）', k: 'reason' }, { h: '井数', k: 'n', num: true, d: 0 }], qRows) : emptyState('全部通过'));
+
+  host.replaceChildren(strip,
+    el('div', { class: 'row c21' }, [mapPanel, el('div', { class: 'stack' }, [btPanel, qPanel])]),
+    el('div', { class: 'row' }, wellListPanel(wells)));
+}
+
+function wellListPanel(wells) {
+  const PAGE = 10;
+  const tbHost = el('div'), pager = el('div', { class: 'pager' });
+  const search = el('input', { type: 'text', placeholder: '搜索井号', 'aria-label': '搜索井号', value: S.wl.q, style: 'height:26px;width:160px;font-size:12px' });
+  search.addEventListener('input', () => { S.wl.q = search.value; S.wl.page = 0; draw(); });
+  const cols = [
+    { h: '井号', k: 'well_code', render: r => el('a', { href: '#/well', text: r.well_code, onclick: e => { e.stopPropagation(); pickWell(r.well_code); } }) },
+    { h: '区块', k: 'block' }, { h: '层系', k: 'layer' }, { h: '井型', k: 'well_type' },
+    { h: '状态', k: 'status', render: r => WELL_STATUS_CN[r.status] || r.status },
+    { h: '类型', k: 'is_new', render: r => r.is_new ? tag('新井', 'brand') : tag('老井') },
+    { h: '投产日期', k: 'first_prod_date' }, { h: '生产天数', k: 'history_days', num: true, d: 0 },
+    { h: '累产油 (t)', k: 'cum_oil_t', num: true, d: 0 }, { h: '达峰产量 (t/d)', k: 'q_peak', num: true },
+    { h: 'EUR (t)', k: 'eur', num: true, d: 0 },
+    { h: '操作', k: 'op', render: r => el('a', { href: '#/reserves', text: '储量', onclick: e => { e.stopPropagation(); pickWell(r.well_code); } }) }];
+  function draw() {
+    const q = S.wl.q.trim().toUpperCase();
+    const rows = wells.filter(w => !q || w.well_code.toUpperCase().includes(q));
+    const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+    S.wl.page = Math.min(S.wl.page, pages - 1);
+    tbHost.replaceChildren(rows.length ? table(cols, rows.slice(S.wl.page * PAGE, (S.wl.page + 1) * PAGE),
+      { onRow: r => { pickWell(r.well_code); go('well'); } }) : emptyState('没有匹配的井'));
+    pager.replaceChildren(el('span', { text: `共 ${rows.length} 口 · 第 ${S.wl.page + 1} / ${pages} 页` }),
+      el('button', { class: 'btn sm', type: 'button', text: '上一页', disabled: S.wl.page === 0, onclick: () => { S.wl.page--; draw(); } }),
+      el('button', { class: 'btn sm', type: 'button', text: '下一页', disabled: S.wl.page >= pages - 1, onclick: () => { S.wl.page++; draw(); } }));
+  }
+  draw();
+  return panel('井列表', { meta: '点击行进入全生命周期预测', flush: true, actions: [search] }, [tbHost, pager]);
+}
+
+/* ── 单井选择器（页头筛选） ── */
 function wellPicker(onChange) {
-  const sel = el('select', { onchange: e => onChange(e.target.value) },
-    S.wells.map(w => el('option', {
-      value: w.well_code,
-      text: `${w.well_code}　${w.block}/${w.layer}　${w.is_new ? '新井' : '老井'}　${w.history_days}d`
-    })));
+  const sel = el('select', { onchange: e => onChange(e.target.value), style: 'max-width:260px' },
+    S.wells.map(w => el('option', { value: w.well_code, text: `${w.well_code}　${w.block}/${w.layer}　${w.is_new ? '新井' : '老井'}` })));
   if (S.current) sel.value = S.current;
   return sel;
 }
 
+/* ── 全生命周期预测 ── */
 async function renderWell() {
-  const host = $('#tab-well');
-  if (!S.wells.length) { host.innerHTML = '<p class="empty">请先打开总览页加载井表</p>'; return; }
-  if (!S.current) S.current = S.wells[0].well_code;
-  host.innerHTML = '';
-  host.appendChild(el('div', { class: 'filters' }, [
-    el('label', { text: '选择井' }), wellPicker(c => { S.current = c; renderWell(); }),
-    el('span', { class: 'chip solid', id: 'wellMeta', text: '加载中…' })]));
-  const body = el('div'); host.appendChild(body);
-  body.innerHTML = '<p class="empty">计算中…（首次访问需拟合递减曲线，约 1 秒）</p>';
+  const host = $('#tab-well'), token = ++S.tok.well;
+  host.replaceChildren(loading('加载井数据…'));
+  await ensureBase();
+  if (token !== S.tok.well || S.page !== 'well') return;
+  setCtx('well', [ctxField('井号', wellPicker(c => { S.current = c; renderWell(); })),
+    el('button', { class: 'btn sm', type: 'button', text: '查看储量评估', onclick: () => go('reserves') })]);
+  host.replaceChildren(loading('计算中… 首次访问需拟合递减曲线，约 1 秒'));
 
-  let pred, curve, analogs, info;
+  let info, curve, pred, analogs, dca0;
   try {
-    [info, curve, pred, analogs] = await Promise.all([
-      api('/well/query', { well_code: S.current }),
-      api('/well/curve', { well_code: S.current }),
-      api('/predict/lifecycle', { well_code: S.current }),
-      api('/analogs', { well_code: S.current, top_k: 5 })]);
-  } catch (e) { body.innerHTML = ''; body.appendChild(el('p', { class: 'err', text: '失败：' + e.message })); return; }
+    [info, curve, pred, analogs, dca0] = await Promise.all([
+      api('/well/query', { well_code: S.current }), api('/well/curve', { well_code: S.current }),
+      api('/predict/lifecycle', { well_code: S.current }), api('/analogs', { well_code: S.current, top_k: 5 }),
+      api('/reserves/dca', { well_code: S.current }).catch(() => null)]);
+  } catch (e) {
+    if (token === S.tok.well) host.replaceChildren(alertBar('crit', '加载失败', e.message));
+    return;
+  }
+  if (token !== S.tok.well) return;
 
-  $('#wellMeta').textContent = `${info.block}/${info.layer}｜${info.well_type}｜投产 ${info.first_prod_date}｜` +
-    `累产 ${fmt(info.cum_oil_t, 0)} t｜近 ${info.rate_window_days} 天 ${fmt(info.current_rate_t_per_d)} t/d`;
-  body.innerHTML = '';
-
-  /* 预测卡：区间是主角，不给单点 */
   const pr = pred.results;
-  body.appendChild(el('div', { class: 'grid g3', style: 'margin-bottom:14px' },
-    Object.entries(pr).map(([k, v]) => el('div', { class: 'card' }, el('div', { class: 'kpi' }, [
-      el('span', { class: 'k', text: TARGET_CN[k] || k }),
-      el('span', { class: 'v', text: fmt(v.p50) + ' ' + v.unit }),
-      el('span', { class: 'n mono', text: `P10–P90  ${fmt(v.p10)} ~ ${fmt(v.p90)}` })])))));
+  const act = curve.actual && curve.actual.label_quality === 'ok' ? curve.actual : null;
+  const strip = kpiStrip(Object.entries(pr).map(([k, v]) => ({
+    label: `${TARGET_CN[k] || k} · P50`, value: fmt(v.p50), unit: v.unit,
+    note: `P10–P90 ${fmt(v.p10)} ~ ${fmt(v.p90)}` + (act && act[k] != null ? `｜实际 ${fmt(act[k])}` : '') })));
 
-  /* 主图：实测 + 预测 + 概率带。压力单开一张，绝不双轴。 */
+  /* 主图：实测 + 预测 + 概率带。压力不进同一张图，绝不双轴。 */
   const c1 = cssVar('--c1'), c2 = cssVar('--c2');
   const obs = curve.month.map((m, i) => ({ x: m, y: curve.oil_t_per_d[i] }));
   const cv = pred.curve;
   const ratio = { lo: pr.eur ? pr.eur.p10 / pr.eur.p50 : .8, hi: pr.eur ? pr.eur.p90 / pr.eur.p50 : 1.2 };
-  const dca0 = await api('/reserves/dca', { well_code: S.current }).catch(() => null);
-  /* x 轴裁到经济极限之后一点：后面几十个月的平尾巴只会把有信息的前段压扁 */
-  /* 优先裁到经济极限；新井拿不到经济极限（DCA 不适用），
-     就退回用曲线自身：降到峰值 8% 以下就没有信息量了。 */
+  /* 横轴裁到经济极限附近；新井拿不到经济极限，就用曲线降到峰值 8% 以下的位置 */
   let cut = cv ? cv.month.length : 0;
   if (cv && cv.q.length) {
     const qEcon = dca0 ? dca0.economics.q_econ_t_per_d : Math.max(...cv.q) * 0.08;
@@ -855,157 +1148,125 @@ async function renderWell() {
   }
   const p50 = cv ? cv.month.slice(0, cut).map((m, i) => ({ x: m, y: cv.q[i] })) : [];
   const band = cv ? cv.month.slice(0, cut).map((m, i) => ({ x: m, lo: cv.q[i] * ratio.lo, hi: cv.q[i] * ratio.hi })) : [];
-  const obsEnd = Math.max(...curve.month, 1);
-
-  const chart = el('figure');
-  chart.appendChild(legend([
-    { name: '实测月均日产', color: c2 }, { name: '预测 P50', color: c1 },
-    { name: 'P10–P90 区间', color: c1, kind: 'band' }, { name: '经济极限', kind: 'dash' }]));
-  const plot = el('div'); chart.appendChild(plot);
-  chart.appendChild(el('figcaption', {
-    text: `预测曲线由预测出的达峰产量、达峰时间与 EUR 反推（Di=${cv ? cv.di : '—'}，b=${cv ? cv.b : '—'}），` +
-      `与三个标量预测自洽；概率带按 EUR 区间等比缩放。` +
-      (dca0 ? '经济极限线以 12 个月首日均价口径计算。' : '该井尚未达峰，递减分析不适用，故不画经济极限线。') +
-      ' 横轴已裁到经济极限附近。'
-  }));
+  const plot = el('div');
   lineChart(plot, {
     xLabel: '投产后月份', yLabel: '日产油 t/d',
     series: [{ name: '实测', color: c2, points: obs, dots: obs.length < 40 },
-    { name: '预测 P50', color: c1, points: p50, dashed: true }],
+      { name: '预测 P50', color: c1, points: p50, dashed: true }],
     band, bandColor: c1,
     hline: dca0 ? { y: dca0.economics.q_econ_t_per_d, label: `经济极限 ${dca0.economics.q_econ_t_per_d} t/d` } : null,
-    vline: { x: obsEnd, label: '← 实测 / 预测 →' },
+    vline: { x: Math.max(...curve.month, 1), label: '← 实测 / 预测 →' },
     markers: pr.t_peak ? [{ x: pr.t_peak.p50 / 30.4, y: pr.q_peak.p50, color: c2, label: `达峰 P50 ${fmt(pr.t_peak.p50, 0)} d` }] : []
   });
-  body.appendChild(card('全生命周期预测', `观测窗 ${pred.obs_days} 天｜模型 ${pred.model_version}`, chart));
+  const curvePanel = panel('产量剖面预测', {
+    meta: `观测窗 ${pred.obs_days} 天 · 模型 ${pred.model_version} · Di=${cv ? cv.di : '—'} · b=${cv ? cv.b : '—'}`,
+    note: ['预测曲线由预测出的达峰产量、达峰时间与 EUR 反推，与三个标量预测自洽；概率带按 EUR 区间等比缩放。',
+      dca0 ? '经济极限线按 12 个月首日均价口径计算；横轴已裁到经济极限附近。' : '该井尚未达峰，递减分析不适用，故不画经济极限线。']
+  }, [legend([{ name: '实测月均日产', color: c2 }, { name: '预测 P50', color: c1 },
+    { name: 'P10–P90 区间', color: c1, kind: 'band' }, dca0 ? { name: '经济极限', kind: 'dash' } : null].filter(Boolean)),
+  el('figure', {}, plot)]);
 
-  /* 归因 + 类比井 */
-  const attrHost = el('figure');
-  divergingBars(attrHost, pred.explain.top_features.map(f => ({
-    label: FEATURE_CN[f.feature] || f.feature, value: f.contrib, raw: f.value
-  })), 'd');
-  const attrCard = card('特征归因（对达峰时间）', pred.explain.method + '：把该特征换成训练集中位数，看预测怎么变。', attrHost);
-
-  const anCard = card('类比井', analogs.method,
+  const attrHost = el('div');
+  divergingBars(attrHost, pred.explain.top_features.map(f => ({ label: FEATURE_CN[f.feature] || f.feature, value: f.contrib, raw: f.value })), 'd');
+  const attrPanel = panel('特征归因 · 达峰时间', {
+    meta: '条形 = 该特征把预测推高 / 拉低的天数', note: pred.explain.method + '：把该特征换成训练集中位数，看预测怎么变。'
+  }, el('figure', {}, attrHost));
+  const anPanel = panel('类比井', { meta: `相似度前 ${analogs.analogs.length}`, note: analogs.method, flush: true },
     table([{ h: '井号', k: 'well_code' }, { h: '相似度', k: 'similarity', num: true },
-    { h: '实际达峰 (d)', k: 't_peak_actual', num: true, d: 0 },
-    { h: '峰值 (t/d)', k: 'q_peak_actual', num: true },
-    { h: 'EUR (t)', k: 'eur_actual', num: true, d: 0 }], analogs.analogs));
-  body.appendChild(el('div', { class: 'grid g2', style: 'margin-top:14px' }, [attrCard, anCard]));
+      { h: '实际达峰 (d)', k: 't_peak_actual', num: true, d: 0 }, { h: '峰值 (t/d)', k: 'q_peak_actual', num: true },
+      { h: 'EUR (t)', k: 'eur_actual', num: true, d: 0 }], analogs.analogs, { onRow: r => { S.current = r.well_code; renderWell(); } }));
 
-  if (curve.actual && curve.actual.t_peak && curve.actual.label_quality === 'ok') {
-    body.appendChild(card('该井的实际标签（仅老井有）',
-      `标签口径版本 ${pred.label_def_version}｜质量位 ${curve.actual.label_quality}｜可用于与预测值比对`,
-      table([{ h: '指标', k: 'k' }, { h: '实际值', k: 'v', num: true }], [
-        { k: '达峰时间 (d)', v: curve.actual.t_peak }, { k: '达峰产量 (t/d)', v: curve.actual.q_peak },
-        { k: '达峰压力 (MPa)', v: curve.actual.p_peak }, { k: 'EUR (t)', v: curve.actual.eur }])));
-  } else if (curve.actual) {
-    body.appendChild(card('该井暂无可信实际标签',
-      `质量位 ${curve.actual.label_quality || '—'}`,
-      el('p', { class: 'sub', style: 'margin:0',
-        text: '该井尚未确认达峰（峰后下降未持续足够长时间），因此不展示"实际达峰"值 —— ' +
-              '把还没到的峰当成真值展示，会让预测看起来是错的，而错的是标签。' })));
-  }
+  const warn = !act && curve.actual ? alertBar('info', '暂无可信实际标签',
+    `质量位 ${curve.actual.label_quality || '—'}：峰后下降尚未持续足够长时间，不展示"实际达峰"，避免把还没到的峰当成真值。`) : null;
+  host.replaceChildren(...[wellHead(info), warn, strip, curvePanel,
+    el('div', { class: 'row c2' }, [attrPanel, anPanel])].filter(Boolean));
 }
 
-/* ── 储量与 SEC ── */
+/* ── 储量与 SEC 预评估 ── */
 async function renderReserves() {
-  const host = $('#tab-reserves');
-  if (!S.wells.length) { host.innerHTML = '<p class="empty">请先打开总览页加载井表</p>'; return; }
-  if (!S.current) S.current = S.wells[0].well_code;
-  host.innerHTML = '';
-  host.appendChild(el('div', { class: 'filters' }, [
-    el('label', { text: '选择井' }), wellPicker(c => { S.current = c; renderReserves(); })]));
-  const body = el('div'); host.appendChild(body);
-  body.innerHTML = '<p class="empty">计算中…</p>';
+  const host = $('#tab-reserves'), token = ++S.tok.reserves;
+  host.replaceChildren(loading());
+  await ensureBase();
+  if (token !== S.tok.reserves || S.page !== 'reserves') return;
+  setCtx('reserves', [ctxField('井号', wellPicker(c => { S.current = c; renderReserves(); })),
+    el('button', { class: 'btn sm', type: 'button', text: '查看生命周期预测', onclick: () => go('well') })]);
+  host.replaceChildren(loading('计算中…'));
 
   /* 逐个容错：新井做不了递减分析是正常业务状态，不该让整页报错 */
   const soft = p => p.catch(e => ({ _error: e.message }));
-  const [dca, vol, cc, sec] = await Promise.all([
-    soft(api('/reserves/dca', { well_code: S.current })),
-    soft(api('/reserves/volumetric', { well_code: S.current })),
-    soft(api('/reserves/crosscheck', { well_code: S.current })),
-    soft(api('/sec/screen', { well_code: S.current }))]);
-  body.innerHTML = '';
+  const [info, dca, vol, cc, sec] = await Promise.all([
+    soft(api('/well/query', { well_code: S.current })),
+    soft(api('/reserves/dca', { well_code: S.current })), soft(api('/reserves/volumetric', { well_code: S.current })),
+    soft(api('/reserves/crosscheck', { well_code: S.current })), soft(api('/sec/screen', { well_code: S.current }))]);
+  if (token !== S.tok.reserves) return;
+  if (info._error) { host.replaceChildren(alertBar('crit', '加载失败', info._error)); return; }
 
-  if (dca._error) {
-    body.appendChild(el('div', { class: 'card', style: 'margin-bottom:14px;border-color:var(--warn)' }, [
-      el('h3', { text: '递减分析不适用' }),
-      el('p', { class: 'sub', style: 'margin:0', text: dca._error }),
-      el('p', { class: 'sub', style: 'margin:8px 0 0',
-        text: '这是正确行为：递减分析的前提是已过峰，把上升段当递减段拟合会外推出荒谬的 EUR。' +
-              '该井的储量区间请看"单井工作台"里模型给出的 EUR 预测。' })]));
+  const strip = kpiStrip([
+    { label: 'EUR · P50', ...(dca._error ? { value: '不可得' } : tU(dca.eur.p50)), note: dca._error ? '需峰后 180 天历史' : `P10–P90 ${fmt(dca.eur.p10, 0)} ~ ${fmt(dca.eur.p90, 0)} t` },
+    { label: '已累产', ...(dca._error ? tU(info.cum_oil_t) : tU(dca.cum_to_date_t)), note: dca._error ? '井史累计' : '至评估基准日' },
+    { label: '剩余可采 · P50', ...(dca._error ? { value: '—' } : tU(dca.remaining_t.p50)), note: dca._error ? '递减分析不适用' : '按递减曲线外推至经济极限' },
+    { label: 'SEC 类别', value: sec._error ? '—' : sec.category, note: sec._error ? sec._error : sec.category_rationale },
+    { label: '已证实储量', ...((sec._error || sec.proved_reserves_t === null) ? { value: '不可得' } : tU(sec.proved_reserves_t)), note: sec._error ? '' : sec.basis }]);
+
+  const dcaPanel = dca._error ? panel('递减曲线分析', { meta: '不适用' }, emptyState(dca._error))
+    : panel('递减曲线分析', { meta: `${dca.fit.model} · R² ${dca.fit.r2}`, note: dca.guard, flush: true },
+      el('div', { style: 'padding:4px 16px' }, kv([
+        ['递减参数', `b = ${dca.fit.b} · Di = ${dca.fit.di_per_month} /月 · 终端递减 ${dca.fit.d_min_per_month} /月`],
+        ['经济极限产量', dca.economics.q_econ_t_per_d + ' t/d'],
+        ['到达经济极限', '第 ' + fmt(dca.economics.t_econ_month, 0) + ' 个月'],
+        ['12 个月首日均价', dca.economics.avg_12m_price_usd_bbl + ' USD/bbl'],
+        ['价格册', dca.economics.price_deck_id],
+        ['EUR 区间', `P10 ${fmt(dca.eur.p10, 0)} · P50 ${fmt(dca.eur.p50, 0)} · P90 ${fmt(dca.eur.p90, 0)} t`],
+        ['不确定性', dca.eur.n_bootstrap + ' 次移动块自助法'],
+        dca.economics.t_econ_capped ? ['注意', dca.economics.t_econ_note] : null])));
+
+  /* 蒙特卡洛：用返回的分位数重建对数正态样本只为展示形状，参考线才是真值 */
+  let volPanel;
+  if (vol._error) volPanel = panel('容积法储量', { meta: '不可得' }, emptyState(vol._error));
+  else {
+    const o = vol.ooip_t, mu = Math.log(Math.max(o.p50, 1));
+    const sigma = Math.max((Math.log(Math.max(o.p90, 1)) - Math.log(Math.max(o.p10, 1))) / 2.563, .05);
+    const sample = Array.from({ length: 4000 }, () => {
+      let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random();
+      return Math.exp(mu + sigma * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v));
+    });
+    const mc = el('div');
+    histogram(mc, sample, [{ x: o.p10, label: 'P10' }, { x: o.p50, label: 'P50' }, { x: o.p90, label: 'P90' }], '地质储量 OOIP (t)');
+    volPanel = panel('容积法储量', {
+      meta: `OOIP P50 ${fmtT(o.p50)} · P10–P90 ${fmtT(o.p10)} ~ ${fmtT(o.p90)}`,
+      note: [vol.method, '直方图形状按接口返回的 P10/P50/P90 重建，仅示意分布宽度；三条参考线才是内核蒙特卡洛的实际输出。']
+    }, el('figure', {}, mc));
   }
 
-  body.appendChild(el('div', { class: 'grid g3', style: 'margin-bottom:14px' }, [
-    kpi('EUR P50', dca._error ? '不可得' : fmt(dca.eur.p50, 0) + ' t',
-      dca._error ? '需峰后 180 天历史' : `P10–P90 ${fmt(dca.eur.p10, 0)} ~ ${fmt(dca.eur.p90, 0)}`),
-    kpi('已累产', dca._error ? '—' : fmt(dca.cum_to_date_t, 0) + ' t',
-      dca._error ? '' : `剩余可采 P50 ${fmt(dca.remaining_t.p50, 0)} t`),
-    kpi('SEC 类别', sec._error ? '—' : sec.category, sec._error ? sec._error : sec.category_rationale),
-    kpi('已证实储量',
-      (sec._error || sec.proved_reserves_t === null) ? '不可得' : fmt(sec.proved_reserves_t, 0) + ' t',
-      sec._error ? '' : sec.basis)]));
+  const ccKind = c => c === 'consistent' ? 'ok' : c === 'conflict' ? 'crit' : 'warn';
+  const ccPanel = cc._error ? panel('动静态互校', { meta: '不适用' }, emptyState(cc._error))
+    : panel('动静态互校', { actions: [tag('判定：' + (CONSIST_CN[cc.consistency] || cc.consistency), ccKind(cc.consistency))] }, [
+      kv([['隐含采收率', cc.rf_implied_pct + '%'],
+        ['区块经验区间', `${cc.rf_reference_pct.low_pct}% ~ ${cc.rf_reference_pct.high_pct}%（10%–90% 分位）`],
+        ['参考样本', `${cc.rf_reference_source.n} 口 · ${cc.rf_reference_source.source}`]]),
+      el('div', { style: 'margin-top:8px' }, cc.findings.map(f => el('div', { class: 'finding ' + f.severity }, el('div', {}, [
+        el('div', { text: f.finding }),
+        f.reason ? el('div', { class: 'act', text: '可能原因：' + f.reason }) : null,
+        f.action ? el('div', { class: 'act', text: '建议：' + f.action }) : null]))))]);
 
-  const dcaCard = dca._error ? card('递减曲线分析', '不适用', el('p', { class: 'sub', style: 'margin:0', text: dca._error }))
-    : card('递减曲线分析',
-    `${dca.fit.model}｜b=${dca.fit.b}｜Di=${dca.fit.di_per_month}/月｜终端递减=${dca.fit.d_min_per_month}/月｜R²=${dca.fit.r2}`,
-    [table([{ h: '项', k: 'k' }, { h: '值', k: 'v' }], [
-      { k: '经济极限产量', v: dca.economics.q_econ_t_per_d + ' t/d' },
-      { k: '到达经济极限', v: '第 ' + fmt(dca.economics.t_econ_month, 0) + ' 个月' },
-      { k: '12 个月首日均价', v: dca.economics.avg_12m_price_usd_bbl + ' USD/bbl' },
-      { k: '价格册', v: dca.economics.price_deck_id },
-      { k: '自助法次数', v: dca.eur.n_bootstrap + ' 次（移动块）' }].concat(
-        dca.economics.t_econ_capped ? [{ k: '注意', v: dca.economics.t_econ_note }] : [])),
-    el('p', { class: 'sub', style: 'margin:10px 0 0', text: dca.guard })]);
+  const secPanel = sec._error ? panel('SEC 满足性检查', { meta: '不可得' }, emptyState(sec._error))
+    : panel('SEC 满足性检查', {
+      meta: `基准日 ${sec.as_of}`, flush: true,
+      actions: [tag(`通过 ${sec.summary.n_pass} / ${sec.summary.n_items}`, 'ok'),
+        sec.summary.n_needs_human ? tag(`待人工 ${sec.summary.n_needs_human}`, 'warn') : null].filter(Boolean),
+      foot: [icon('alert'), sec.summary.disclaimer]
+    }, el('ul', { class: 'chk' }, sec.checklist.map(i => el('li', {}, [
+      el('span', {}, tag(STATUS_CN[i.status], STATUS_CLS[i.status])),
+      el('div', {}, [el('div', { class: 'it', text: i.item }), el('div', { class: 'ev', text: '依据：' + i.evidence }),
+        i.citation ? el('div', { class: 'ct mono', text: i.citation }) : null])]))));
 
-  /* 蒙特卡洛：用返回的分位数重建一个对数正态样本用于展示形状，
-     参考线才是真值 —— 这一点写在图注里，不能让人误以为是原始样本。 */
-  const o = vol._error ? { p10: 1, p50: 2, p90: 3 } : vol.ooip_t;
-  const mu = Math.log(Math.max(o.p50, 1));
-  const sigma = Math.max((Math.log(Math.max(o.p90, 1)) - Math.log(Math.max(o.p10, 1))) / 2.563, .05);
-  const sample = Array.from({ length: 4000 }, () => {
-    let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random();
-    return Math.exp(mu + sigma * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v));
-  });
-  const mcFig = el('figure'); const mcPlot = el('div'); mcFig.appendChild(mcPlot);
-  histogram(mcPlot, sample, [{ x: o.p10, label: 'P10' }, { x: o.p50, label: 'P50' }, { x: o.p90, label: 'P90' }], '地质储量 OOIP (t)');
-  mcFig.appendChild(el('figcaption', {
-    text: '直方图形状按接口返回的 P10/P50/P90 重建，仅用于示意分布宽度；三条参考线才是内核蒙特卡洛的实际输出。'
-  }));
-  const volCard = vol._error ? card('容积法储量', '不可得', el('p', { class: 'err', text: vol._error }))
-    : card('容积法储量', vol.method, mcFig);
-
-  const ccCard = cc._error ? card('动静态互校', '不适用', el('p', { class: 'sub', style: 'margin:0', text: cc._error }))
-    : card('动静态互校',
-    `隐含采收率 ${cc.rf_implied_pct}%｜区块经验区间 ${cc.rf_reference_pct.low_pct}% ~ ${cc.rf_reference_pct.high_pct}%（10%–90% 分位）` +
-    `（样本 ${cc.rf_reference_source.n} 口，来源 ${cc.rf_reference_source.source}）`,
-    [el('div', {}, [el('span', { class: 'chip ' + (cc.consistency === 'consistent' ? 'ok' : cc.consistency === 'conflict' ? 'crit' : 'warn'), text: '判定：' + cc.consistency })]),
-    el('div', { style: 'margin-top:12px' }, cc.findings.map(f => el('div', { class: 'finding ' + f.severity }, [
-      el('div', { text: f.finding }),
-      f.reason ? el('div', { class: 'act', text: '可能原因：' + f.reason }) : null,
-      f.action ? el('div', { class: 'act', text: '建议：' + f.action }) : null].filter(Boolean))))]);
-
-  const secCard = sec._error ? card('SEC 满足性检查清单', '不可得', el('p', { class: 'err', text: sec._error }))
-    : card('SEC 满足性检查清单',
-    `${sec.summary.n_pass}/${sec.summary.n_items} 项通过｜${sec.summary.n_needs_human} 项需人工确认｜基准日 ${sec.as_of}`,
-    [el('ul', { class: 'chk' }, sec.checklist.map(i => el('li', {}, [
-      el('span', {}, el('span', { class: 'chip ' + STATUS_CLS[i.status], text: STATUS_CN[i.status] })),
-      el('div', {}, [el('div', { class: 'it', text: i.item }),
-      el('div', { class: 'ev', text: '依据：' + i.evidence }),
-      i.citation ? el('div', { class: 'ct mono', text: i.citation }) : null].filter(Boolean))]))),
-    el('p', { class: 'sub', style: 'margin:12px 0 0;color:var(--warn)', text: sec.summary.disclaimer })]);
-
-  if (dca._error) {
-    body.appendChild(el('div', { class: 'grid g2' }, [volCard, secCard]));
-  } else {
-    body.appendChild(el('div', { class: 'grid g2' }, [dcaCard, volCard]));
-    body.appendChild(el('div', { class: 'grid g2', style: 'margin-top:14px' }, [ccCard, secCard]));
-  }
+  host.replaceChildren(...[wellHead(info),
+    dca._error ? alertBar('warn', '递减分析不适用', `${dca._error}。递减分析要求已过峰，把上升段当递减段拟合会外推出荒谬的 EUR；该井储量区间请参考"全生命周期预测"中的 EUR。`) : null,
+    strip,
+    el('div', { class: 'row c2' }, [el('div', { class: 'stack' }, [dcaPanel, ccPanel, volPanel]), secPanel])].filter(Boolean));
 }
 
-
-/* ── SEC 单元：共用的评估对象筛选（一行筛选，作用于本页全部图表） ── */
+/* ── SEC 单元：共用 ── */
 const COMP = () => [
   { key: 'old_base', name: '老井基础', color: cssVar('--c1') },
   { key: 'measure', name: '措施增储', color: cssVar('--c2') },
@@ -1017,7 +1278,7 @@ const RECON_COMP = { new_wells: 'new_infill', measure: 'measure', extension: 'ex
 const RECON_TINY = { opening: '期初', production: '产量', price_revision: '价格', new_wells: '新井',
   measure: '措施', extension: '扩边', category_change: '类别', technical_revision: '技术', closing: '期末' };
 const softApi = (p, q) => api(p, q).catch(e => ({ _error: e.message }));
-const errCard = (title, msg) => card(title, '不可得', el('p', { class: 'sub', style: 'margin:0', text: msg }));
+const errPanel = (title, msg) => panel(title, { meta: '不可得' }, emptyState(msg));
 
 async function ensureUnits() {
   if (!S.units) {
@@ -1029,27 +1290,26 @@ async function ensureUnits() {
   return S.units;
 }
 
-function unitFilters(opts, onChange) {
+function unitCtx(opts, onChange) {
   const u = S.units;
-  const scopeSel = el('select', { onchange: e => { S.scope = e.target.value; onChange(); } }, [
+  const scopeSel = el('select', { onchange: e => { S.scope = e.target.value; onChange(); }, style: 'max-width:280px' }, [
     el('optgroup', { label: '公司' }, el('option', { value: u.company.name, text: u.company.name })),
     el('optgroup', { label: '采油厂' }, u.plants.map(p => el('option', { value: p.plant_name, text: p.plant_name }))),
     el('optgroup', { label: 'SEC 单元' }, u.plants.flatMap(p => p.units.map(x =>
       el('option', { value: x.unit_id, text: `${x.unit_id}　${x.unit_name}　${x.n_wells} 口` }))))]);
   scopeSel.value = S.scope;
-  const fg = (label, ctl) => el('span', { class: 'fgroup' }, [el('label', { text: label }), ctl]);
-  const kids = [fg('评估对象', scopeSel)];
+  const out = [ctxField('评估对象', scopeSel)];
   if (opts.date) {
     const d = el('select', { onchange: e => { S.asOf = e.target.value; onChange(); } },
       u.evaluation_dates.map(x => el('option', { value: x, text: x })));
-    d.value = S.asOf; kids.push(fg('基准日', d));
+    d.value = S.asOf; out.push(ctxField(opts.dateLabel || '基准日', d));
   }
   if (opts.scenario) {
     const sc = el('select', { onchange: e => { S.scenario = e.target.value; onChange(); } },
       u.scenarios.map(x => el('option', { value: x.key, text: x.label })));
-    sc.value = S.scenario; kids.push(fg('价格情景', sc));
+    sc.value = S.scenario; out.push(ctxField('价格情景', sc));
   }
-  return el('div', { class: 'filters' }, kids);
+  return out;
 }
 
 function evidenceText(kind, e) {
@@ -1060,15 +1320,14 @@ function evidenceText(kind, e) {
   return '';
 }
 
-/* ── SEC 构成评估（技术人员视角） ── */
+/* ── SEC 构成评估（技术人员视角）：一次取数，子页签切换不重复请求 ── */
 async function renderUnit() {
-  const host = $('#tab-unit'), token = S.unitToken = (S.unitToken || 0) + 1;
-  host.innerHTML = '<p class="empty">加载评估单元…</p>';
+  const host = $('#tab-unit'), token = ++S.tok.unit;
+  host.replaceChildren(loading('加载评估单元…'));
   await ensureUnits();
-  host.innerHTML = '';
-  host.appendChild(unitFilters({ date: true, scenario: true }, renderUnit));
-  const body = el('div'); host.appendChild(body);
-  body.innerHTML = '<p class="empty">评估中…首次评估要逐井拟合全部老井（公司级约 10 秒），之后命中缓存。</p>';
+  if (token !== S.tok.unit || S.page !== 'unit') return;
+  setCtx('unit', unitCtx({ date: true, scenario: true }, renderUnit));
+  host.replaceChildren(loading('评估中… 首次评估需逐井拟合全部老井（公司级约 10 秒），之后命中缓存'));
 
   const dates = S.units.evaluation_dates, idx = dates.indexOf(S.asOf);
   const q = { scope: S.scope, as_of: S.asOf }, qs = { ...q, scenario: S.scenario };
@@ -1080,195 +1339,247 @@ async function renderUnit() {
     softApi('/unit/production', q), softApi('/unit/decline', q), softApi('/unit/new-wells', q),
     softApi('/unit/measures', q), rq ? softApi('/unit/reconcile', rq) : noPrev,
     rq ? softApi('/unit/attribution', rq) : noPrev, softApi('/unit/sensitivity', qs)]);
-  if (token !== S.unitToken) return;            /* 筛选已改：丢弃过期结果 */
-  body.innerHTML = '';
-  if (comp._error) { body.appendChild(errCard('SEC 储量构成', comp._error)); return; }
+  if (token !== S.tok.unit) return;            /* 筛选已改：丢弃过期结果 */
+  if (comp._error) { host.replaceChildren(alertBar('crit', '构成评估失败', comp._error)); return; }
+
   const C = COMP(), color = Object.fromEntries(C.map(c => [c.key, c.color]));
+  const D = { comp, prod, dec, nw, meas, recon, attr, sens, C, color };
+  const strip = kpiStrip([
+    { label: `PDP 合计 · ${comp.scenario_label}`, ...tU(comp.total_t), note: `本期产量 ${fmtT(comp.production_in_period_t)}` },
+    ...comp.components.map(c => ({ label: c.name, sw: color[c.key], ...tU(c.reserves_t),
+      note: `占 ${fmt(c.share_pct, 1)}% · ${c.n_items} ${c.key === 'measure' ? '次措施' : '口井'}` }))]);
+  const tabs = [
+    { k: 'comp', label: '储量构成' },
+    { k: 'recon', label: '对账与归因' },
+    { k: 'wells', label: '新井识别', cnt: nw._error ? undefined : nw.n_infill + nw.n_extension },
+    { k: 'measures', label: '措施与递减', cnt: meas._error ? undefined : meas.overall.n },
+    { k: 'sens', label: '敏感性' }];
+  if (!tabs.some(t => t.k === S.unitSub)) S.unitSub = 'comp';
+  const subHost = el('div');
+  const drawSub = () => subHost.replaceChildren(...UNIT_SUB[S.unitSub](D));
+  host.replaceChildren(strip, subTabs(tabs, S.unitSub, k => { S.unitSub = k; drawSub(); }), subHost);
+  drawSub();
+}
 
-  body.appendChild(el('div', { class: 'grid g5', style: 'margin-bottom:14px' }, [
-    stat(`PDP 合计 · ${comp.scenario_label}`, fmtT(comp.total_t),
-      `${comp.period_start_ym} ~ ${comp.period_end_ym}｜本期产量 ${fmtT(comp.production_in_period_t)}`),
-    ...comp.components.map(c => stat(c.name, fmtT(c.reserves_t),
-      `占 ${fmt(c.share_pct, 1)}%｜${c.n_items} ${c.key === 'measure' ? '次措施' : '口井'}`, color[c.key]))]));
+const UNIT_SUB = {
+  comp({ comp, prod, C, color }) {
+    const compPlot = el('div');
+    hStackedBars(compPlot, { rows: comp.units.map(u => ({ label: u.unit_id, tip: `${u.unit_id} ${u.unit_name}`, values: u.components })), series: C, unit: 't', labelW: 120 });
+    const compPanel = panel('按单元的 PDP 构成', {
+      meta: `${comp.scope.name} · 基准日 ${comp.as_of} · ${comp.units.length} 个单元`,
+      note: [`油价 ${comp.economics.price_usd_bbl} USD/bbl，单井经济极限 ${comp.economics.q_econ_t_per_d} t/d。`, comp.aggregation_note],
+      table: table([{ h: '单元', k: 'unit_id' }, { h: '名称', k: 'unit_name' },
+        ...C.map(c => ({ h: c.name + ' (t)', k: c.key, num: true, d: 0 })), { h: '合计 (t)', k: 'total_t', num: true, d: 0 }],
+        comp.units.map(u => ({ ...u, ...u.components })), { scroll: true })
+    }, [legend(C.map(c => ({ name: c.name, color: c.color, kind: 'box' }))), el('figure', {}, compPlot)]);
 
-  /* 按单元构成 */
-  const compFig = el('figure', {}, legend(C.map(c => ({ name: c.name, color: c.color, kind: 'box' }))));
-  const compPlot = el('div'); compFig.appendChild(compPlot);
-  hStackedBars(compPlot, { rows: comp.units.map(u => ({ label: u.unit_id, tip: `${u.unit_id} ${u.unit_name}`, values: u.components })), series: C, unit: 't', labelW: 120 });
-  compFig.appendChild(el('figcaption', { text: comp.components.map(c => `${c.name}：${c.basis}`).join('；') + '。' + (comp.aggregation_note || '') }));
-  body.appendChild(card('按单元的 PDP 构成',
-    `${comp.scope.name}｜基准日 ${comp.as_of}｜油价 ${comp.economics.price_usd_bbl} USD/bbl，单井经济极限 ${comp.economics.q_econ_t_per_d} t/d`,
-    [compFig, tableView([{ h: '单元', k: 'unit_id' }, { h: '名称', k: 'unit_name' },
-      ...C.map(c => ({ h: c.name + ' (t)', k: c.key, num: true, d: 0 })), { h: '合计 (t)', k: 'total_t', num: true, d: 0 }],
-      comp.units.map(u => ({ ...u, ...u.components })))]));
+    let prodPanel;
+    if (prod._error) prodPanel = errPanel('逐月"新-老-措"产量构成', prod._error);
+    else {
+      const series = [{ name: '老井基础', color: color.old_base, values: prod.months.map(m => m.old_base_t) },
+        { name: '本期措施增油', color: color.measure, values: prod.months.map(m => m.measure_inc_t) },
+        { name: '本期新井（提采 + 扩边）', color: color.new_infill, values: prod.months.map(m => m.new_oil_t) }];
+      const plot = el('div');
+      stackedColumns(plot, { categories: prod.months.map(m => m.ym), series, unit: 't', yLabel: '月产油 (t)' });
+      prodPanel = panel('逐月"新-老-措"产量构成', {
+        meta: `近 ${Math.round(prod.months.length / 12)} 年 · 本期 ${prod.period_start_ym} ~ ${prod.period_end_ym}`,
+        note: [prod.note + '。', '此前月份的新井与措施已并入老井基础。'],
+        table: table([{ h: '月份', k: 'ym' }, { h: '老井基础 (t)', k: 'old_base_t', num: true, d: 0 }, { h: '措施增油 (t)', k: 'measure_inc_t', num: true, d: 0 },
+          { h: '新井 (t)', k: 'new_oil_t', num: true, d: 0 }, { h: '合计 (t)', k: 'total_oil_t', num: true, d: 0 }, { h: '在产井', k: 'n_producing', num: true, d: 0 }],
+          prod.months.slice().reverse(), { scroll: true })
+      }, [legend(series.map(s => ({ name: s.name, color: s.color, kind: 'box' }))), el('figure', {}, plot)]);
+    }
 
-  /* 逐月产量构成 */
-  if (prod._error) body.appendChild(el('div', { style: 'margin-top:14px' }, errCard('逐月产量构成', prod._error)));
-  else {
-    const series = [{ name: '老井基础', color: color.old_base, values: prod.months.map(m => m.old_base_t) },
-      { name: '本期措施增油', color: color.measure, values: prod.months.map(m => m.measure_inc_t) },
-      { name: '本期新井（提采 + 扩边）', color: color.new_infill, values: prod.months.map(m => m.new_oil_t) }];
-    const fig = el('figure', {}, legend(series.map(s => ({ name: s.name, color: s.color, kind: 'box' }))));
-    const plot = el('div'); fig.appendChild(plot);
-    stackedColumns(plot, { categories: prod.months.map(m => m.ym), series, unit: 't', yLabel: '月产油 (t)' });
-    fig.appendChild(el('figcaption', { text: `${prod.note}。本期为 ${prod.period_start_ym} ~ ${prod.period_end_ym}；此前月份的新井与措施已并入老井基础。` }));
-    body.appendChild(el('div', { style: 'margin-top:14px' }, card('逐月"新-老-措"产量构成', '近 3 年，按月汇总', [fig,
-      tableView([{ h: '月份', k: 'ym' }, { h: '老井基础 (t)', k: 'old_base_t', num: true, d: 0 }, { h: '措施增油 (t)', k: 'measure_inc_t', num: true, d: 0 },
-        { h: '新井 (t)', k: 'new_oil_t', num: true, d: 0 }, { h: '合计 (t)', k: 'total_oil_t', num: true, d: 0 }, { h: '在产井', k: 'n_producing', num: true, d: 0 }], prod.months)])));
-  }
+    const basis = panel('构成口径', { meta: `PDP 合计 ${fmtT(comp.total_t)}`, flush: true },
+      table([{ h: '构成', k: 'name', render: r => r._cls ? r.name : el('span', { style: 'display:inline-flex;align-items:center;gap:6px' }, [el('i', { class: 'sw', style: `background:${color[r.key]}` }), r.name]) },
+        { h: '剩余可采 (t)', k: 'reserves_t', num: true, d: 0 }, { h: '占比', k: 'share_pct', num: true, render: r => fmt(r.share_pct, 1) + '%' },
+        { h: '数量', k: 'n_items', num: true, render: r => r._cls ? '' : `${r.n_items} ${r.key === 'measure' ? '次' : '口'}` },
+        { h: '取值依据', k: 'basis', cls: 'wrap' }],
+        [...comp.components, { _cls: 'total', key: 'total', name: '合计', reserves_t: comp.total_t, share_pct: 100, basis: '' }]));
+    return [el('div', { class: 'row c2' }, [compPanel, prodPanel]), el('div', { class: 'row' }, basis)];
+  },
 
-  /* 递减 + 措施 */
-  const decCard = dec._error ? errCard('老井基础递减', dec._error) : card('老井基础递减', dec.definition,
-    el('div', { class: 'grid g2x2 inset' }, dec.results.flatMap(r => [
-      stat(`扣近 ${r.exclude_years} 年 · 自然递减率`, fmt(r.natural_annual_pct, 1) + '%',
-        `月递减 ${fmt(r.natural_monthly_pct, 3)}%｜${r.window_start_ym} ~ ${r.window_end_ym}｜R² ${fmt(r.natural_fit_r2, 3)}`),
-      stat(`扣近 ${r.exclude_years} 年 · 综合递减率`, fmt(r.comprehensive_annual_pct, 1) + '%',
-        `月递减 ${fmt(r.comprehensive_monthly_pct, 3)}%｜只扣新井，保留措施增油`)])));
-  let measCard;
-  if (meas._error) measCard = errCard('本期措施效果', meas._error);
-  else {
-    const o = meas.overall, byType = meas.by_type.slice().sort((a, b) => b.inc_eur_total_t - a.inc_eur_total_t);
-    const plot = el('div');
-    hStackedBars(plot, { rows: byType.map(t => ({ label: t.name, values: { v: t.inc_eur_total_t } })),
-      series: [{ key: 'v', name: '增加可采储量', color: color.measure }], unit: 't', labelW: 80 });
-    measCard = card('本期措施效果', `共 ${o.n} 次｜有效 ${o.n_effective} 次（${fmt(o.effective_rate_pct, 1)}%）｜单井日产 ${fmt(o.pre_rate_avg_t_per_d)} → ${fmt(o.post_rate_avg_t_per_d)} t/d｜增加可采储量合计 ${fmtT(o.inc_eur_total_t)}`,
-      [el('figure', {}, [plot, el('figcaption', { text: '按措施类型的增加可采储量合计。' + meas.definition })]),
-       tableView([{ h: '类型', k: 'name' }, { h: '次数', k: 'n', num: true, d: 0 }, { h: '有效', k: 'n_effective', num: true, d: 0 },
-         { h: '措施前 t/d', k: 'pre_rate_avg_t_per_d', num: true }, { h: '措施后 t/d', k: 'post_rate_avg_t_per_d', num: true },
-         { h: '日产增幅 t/d', k: 'rate_gain_avg_t_per_d', num: true }, { h: '单次增加可采 t', k: 'inc_eur_avg_t', num: true, d: 0 },
-         { h: '合计 t', k: 'inc_eur_total_t', num: true, d: 0 }], byType)]);
-  }
-  body.appendChild(el('div', { class: 'grid g2', style: 'margin-top:14px' }, [decCard, measCard]));
-
-  /* 对账 + 归因 */
-  let reconCard;
-  if (recon._error) reconCard = errCard('储量对账', recon._error);
-  else {
+  recon({ recon, attr, C, color }) {
+    if (recon._error) return [alertBar('info', '无法对账', recon._error)];
     const rows = recon.table.map(r => ({ ...r, label: RECON_SHORT[r.key] || r.item, tiny: RECON_TINY[r.key],
       total: r.key === 'opening' || r.key === 'closing',
       color: r.key === 'opening' || r.key === 'closing' ? cssVar('--neutral') : RECON_COMP[r.key] ? color[RECON_COMP[r.key]] : cssVar('--neutral-2') }));
-    const fig = el('figure', {}, legend([{ name: '期初 / 期末', color: cssVar('--neutral'), kind: 'box' },
+    const plot = el('div'); waterfall(plot, rows);
+    const reconPanel = panel('储量对账', {
+      meta: `${recon.from_as_of} → ${recon.to_as_of} · 产量法折耗率 ${fmt(recon.depletion_rate_pct, 2)}%`,
+      actions: [tag(recon.balanced ? '已闭合' : `未闭合 · 差额 ${recon.difference} t`, recon.balanced ? 'ok' : 'crit')],
+      note: ['柱向上为增加、向下为减少。', recon.note + '。', recon.depletion_note + '。', '期初来源：' + recon.opening_source],
+      table: table([{ h: '行项', k: 'item' }, { h: '储量 (t)', k: 'value', num: true, d: 1 }, { h: '说明', k: 'note', cls: 'wrap' }],
+        recon.table.map(r => ({ ...r, _cls: (r.key === 'opening' || r.key === 'closing') ? 'total' : null })))
+    }, [legend([{ name: '期初 / 期末', color: cssVar('--neutral'), kind: 'box' },
       ...['new_infill', 'measure', 'extension'].map(k => ({ name: C.find(c => c.key === k).name, color: color[k], kind: 'box' })),
-      { name: '产量、价格、技术修订等', color: cssVar('--neutral-2'), kind: 'box' }]));
-    const plot = el('div'); fig.appendChild(plot); waterfall(plot, rows);
-    fig.appendChild(el('figcaption', { text: `柱向上为增加、向下为减少。${recon.note}。${recon.depletion_note}。` }));
-    reconCard = card('储量对账', `${recon.from_as_of} → ${recon.to_as_of}｜闭合：${recon.balanced ? '是' : '否'}（差额 ${recon.difference} t）｜产量法折耗率 ${fmt(recon.depletion_rate_pct, 2)}%｜期初来源：${recon.opening_source}`,
-      [fig, tableView([{ h: '行项', k: 'item' }, { h: '储量 (t)', k: 'value', num: true, d: 1 }, { h: '说明', k: 'note' }], recon.table)]);
-  }
-  const attrCard = attr._error ? errCard('变化归因', attr._error) : card('变化归因',
-    `PDP ${fmtT(attr.opening_t)} → ${fmtT(attr.closing_t)}，变化 ${attr.change_t >= 0 ? '+' : ''}${fmtT(attr.change_t)}｜${attr.note}`,
-    el('div', {}, attr.drivers.map(d => el('div', { class: 'finding' }, [
-      el('div', {}, [el('b', { text: d.item }), `　${d.value_t >= 0 ? '+' : ''}${fmt(d.value_t, 0)} t，占 ${fmt(d.share_pct, 1)}%`]),
+      { name: '产量、价格、技术修订等', color: cssVar('--neutral-2'), kind: 'box' }]), el('figure', {}, plot)]);
+    const attrPanel = attr._error ? errPanel('变化归因', attr._error) : panel('变化归因', {
+      meta: `${fmtT(attr.opening_t)} → ${fmtT(attr.closing_t)}`,
+      actions: [el('span', { class: 'tag' }, ['变化 ', delta(attr.change_t, 0, ' t')])],
+      note: attr.note, bodyStyle: 'max-height:430px;overflow:auto;padding-top:4px;padding-bottom:4px'
+    }, attr.drivers.map(d => el('div', { class: 'finding' }, el('div', {}, [
+      el('div', { style: 'display:flex;gap:8px;align-items:baseline;flex-wrap:wrap' }, [el('b', { text: d.item }),
+        el('span', { class: 'num', text: `${signed(d.value_t)} t` }), el('span', { class: 'muted', text: `占 ${fmt(d.share_pct, 1)}%` })]),
       ...d.evidence.map(e => el('div', { class: 'act', text: evidenceText(d.evidence_kind, e) }))]))));
-  body.appendChild(el('div', { class: 'grid g2', style: 'margin-top:14px' }, [reconCard, attrCard]));
+    return [el('div', { class: 'row c21' }, [reconPanel, attrPanel])];
+  },
 
-  /* 新井识别：默认只列 8 口，其余折叠 */
-  const nwCols = [{ h: '井号', k: 'well_code' }, { h: '单元', k: 'unit_id' },
-    { h: '分类', k: 'category', render: r => el('span', {}, [el('i', { class: 'sw', style: `background:${color[r.category_code === 'infill' ? 'new_infill' : 'extension']}` }), r.category]) },
-    { h: '周边老井', k: 'n_old_neighbors', num: true, d: 0 }, { h: '最近老井 m', k: 'nearest_old_m', num: true, d: 0 },
-    { h: '投产月数', k: 'months_on', num: true, d: 0 }, { h: '剩余可采 t', k: 'reserves_t', num: true, d: 0 }, { h: '取值方法', k: 'basis' }];
-  if (!nw._error) {
-    body.appendChild(el('div', { style: 'margin-top:14px' }, card('本期新井自动识别', nw.rule.text, [
-      el('div', { class: 'grid g2 inset', style: 'margin-bottom:10px' }, [
-        stat('提采新井', `${nw.n_infill} 口`, '计入老区 PDP', color.new_infill),
-        stat('扩边井', `${nw.n_extension} 口`, '单列为扩边与新发现；老区 PDP 剔除其产量', color.extension)]),
-      table(nwCols, nw.wells.slice(0, 8)),
-      nw.wells.length > 8 ? el('details', { class: 'tv' }, [el('summary', { text: `展开其余 ${nw.wells.length - 8} 口` }),
-        table(nwCols, nw.wells.slice(8))]) : null].filter(Boolean))));
-  }
+  wells({ nw, color }) {
+    if (nw._error) return [alertBar('crit', '新井识别失败', nw._error)];
+    const cols = [{ h: '井号', k: 'well_code' }, { h: '单元', k: 'unit_id' },
+      { h: '分类', k: 'category', render: r => el('span', { style: 'display:inline-flex;align-items:center;gap:6px' }, [el('i', { class: 'sw', style: `background:${color[r.category_code === 'infill' ? 'new_infill' : 'extension']}` }), r.category]) },
+      { h: '周边老井', k: 'n_old_neighbors', num: true, d: 0 }, { h: '最近老井 (m)', k: 'nearest_old_m', num: true, d: 0 },
+      { h: '投产月数', k: 'months_on', num: true, d: 0 }, { h: '剩余可采 (t)', k: 'reserves_t', num: true, d: 0 }, { h: '取值方法', k: 'basis' }];
+    const tbHost = el('div');
+    const draw = () => tbHost.replaceChildren(table(cols, nw.wells.filter(w => S.nwFilter === 'all' || w.category_code === S.nwFilter), { scroll: true }));
+    const opts = [['all', `全部 ${nw.wells.length}`], ['infill', `提采 ${nw.n_infill}`], ['extension', `扩边 ${nw.n_extension}`]];
+    const seg = el('div', { class: 'seg', role: 'group', 'aria-label': '按分类筛选' }, opts.map(([k, t]) => {
+      const b = el('button', { type: 'button', 'aria-pressed': String(S.nwFilter === k), text: t });
+      b.addEventListener('click', () => { S.nwFilter = k; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); draw(); });
+      return b;
+    }));
+    draw();
+    return [kpiStrip([
+      { label: '提采新井', sw: color.new_infill, value: nw.n_infill, unit: '口', note: '计入老区 PDP' },
+      { label: '扩边井', sw: color.extension, value: nw.n_extension, unit: '口', note: '单列为扩边与新发现；老区 PDP 剔除其产量' }]),
+      panel('本期新井清单', { meta: '按周边老井分布自动判别', note: nw.rule.text, flush: true, actions: [seg] }, tbHost)];
+  },
 
-  /* 敏感性 */
-  if (!sens._error) {
+  measures({ meas, dec, color }) {
+    let measPanel;
+    if (meas._error) measPanel = errPanel('本期措施效果', meas._error);
+    else {
+      const o = meas.overall, byType = meas.by_type.slice().sort((a, b) => b.inc_eur_total_t - a.inc_eur_total_t);
+      const plot = el('div');
+      hStackedBars(plot, { rows: byType.map(t => ({ label: t.name, values: { v: t.inc_eur_total_t } })),
+        series: [{ key: 'v', name: '增加可采储量', color: color.measure }], unit: 't', labelW: 90 });
+      measPanel = panel('本期措施效果', {
+        meta: '按措施类型的增加可采储量合计', note: meas.definition,
+        table: table([{ h: '类型', k: 'name' }, { h: '次数', k: 'n', num: true, d: 0 }, { h: '有效', k: 'n_effective', num: true, d: 0 },
+          { h: '措施前 t/d', k: 'pre_rate_avg_t_per_d', num: true }, { h: '措施后 t/d', k: 'post_rate_avg_t_per_d', num: true },
+          { h: '单次增加可采 t', k: 'inc_eur_avg_t', num: true, d: 0 }, { h: '合计 t', k: 'inc_eur_total_t', num: true, d: 0 }], byType)
+      }, [kpiStrip([
+        { label: '措施井次', value: o.n, unit: '次', note: `有效 ${o.n_effective} 次` },
+        { label: '有效率', value: fmt(o.effective_rate_pct, 1), unit: '%' },
+        { label: '措施后单井日产', value: fmt(o.post_rate_avg_t_per_d), unit: 't/d', note: `措施前 ${fmt(o.pre_rate_avg_t_per_d)} t/d` },
+        { label: '增加可采合计', sw: color.measure, ...tU(o.inc_eur_total_t) }]), el('figure', {}, plot)]);
+    }
+    const decPanel = dec._error ? errPanel('老井基础递减', dec._error) : panel('老井基础递减', {
+      meta: '扣除近 N 年新井后的老井基础', note: dec.definition, flush: true
+    }, table([{ h: '扣除年限', k: 'exclude_years', render: r => `扣近 ${r.exclude_years} 年` },
+      { h: '统计窗口', k: 'w', render: r => `${r.window_start_ym} ~ ${r.window_end_ym}` },
+      { h: '自然递减（年 / 月）', k: 'natural_annual_pct', num: true, render: r => `${fmt(r.natural_annual_pct, 1)}% / ${fmt(r.natural_monthly_pct, 2)}%` },
+      { h: 'R²', k: 'natural_fit_r2', num: true, d: 3 },
+      { h: '综合递减（年 / 月）', k: 'comprehensive_annual_pct', num: true, render: r => `${fmt(r.comprehensive_annual_pct, 1)}% / ${fmt(r.comprehensive_monthly_pct, 2)}%` }], dec.results));
+    if (measPanel.querySelector('.kpis')) measPanel.querySelector('.kpis').classList.add('inset');
+    return [el('div', { class: 'row c2' }, [measPanel, el('div', { class: 'stack' }, [decPanel,
+      alertBar('info', '口径', '自然递减只看老井基础（扣新井、扣措施增油）；综合递减只扣新井、保留措施增油。')])])];
+  },
+
+  sens({ sens }) {
+    if (sens._error) return [alertBar('crit', '敏感性分析失败', sens._error)];
     const ink = cssVar('--ink-2');
     const base = { price: sens.base_price_usd_bbl, opex: 1, rate: 0, decline: 0 };
-    const grid = el('div', { class: 'grid g4' }, sens.curves.map(cv => {
-      const f = el('figure'), p = el('div'); f.appendChild(p);
+    const minis = el('div', { class: 'minis' }, sens.curves.map(cv => {
+      const p = el('div');
       deltaLine(p, { x: cv.x, y: cv.delta_t, xLabel: `${cv.name}（${cv.unit}）`, color: ink, baseX: base[cv.param] });
-      f.appendChild(el('figcaption', { text: `${cv.name}：PDP 变化 ${fmtT(cv.delta_t[0])} ~ ${fmtT(cv.delta_t.at(-1))}` }));
-      return f;
+      return el('div', { class: 'mini' }, [el('h4', { text: cv.name }),
+        el('div', { class: 'kn', text: `PDP 变化 ${fmtT(cv.delta_t[0])} ~ ${fmtT(cv.delta_t.at(-1))}` }), el('figure', {}, p)]);
     }));
-    const wIdx = sens.weights.map((w, i) => ({ h: w.name, k: 'w' + i, num: true, render: r => el('span', { class: 'mono', text: fmt(r['w' + i], 1) + '%' }) }));
-    body.appendChild(el('div', { style: 'margin-top:14px' }, card('PDP 敏感性',
-      `${sens.scenario_label}｜基准油价 ${sens.base_price_usd_bbl} USD/bbl｜最佳估计 ${fmtT(sens.base_best_estimate_t)}｜${sens.note}`, [grid,
-        el('div', { class: 'grid g2', style: 'margin-top:12px' }, [
-          block('敏感权重', sens.perturbation, table([{ h: '参数', k: 'name' }, { h: 'PDP 摆幅 t', k: 'swing_t', num: true, d: 0 },
-            { h: '权重', k: 'weight_pct', num: true, render: r => el('span', { class: 'mono', text: fmt(r.weight_pct, 1) + '%' }) }], sens.weights)),
-          block('各单元参数敏感权重', '权重最大的参数即该单元下一步的主攻方向',
-            table([{ h: '单元', k: 'unit_id' }, { h: '最敏感', k: 'top_param' }, ...wIdx],
-              sens.units.map(u => ({ unit_id: u.unit_id, top_param: u.top_param, ...Object.fromEntries(u.weights.map((w, i) => ['w' + i, w.weight_pct])) }))))])])));
+    const curvesPanel = panel('PDP 敏感性曲线', {
+      meta: `${sens.scenario_label} · 基准油价 ${sens.base_price_usd_bbl} USD/bbl · 最佳估计 ${fmtT(sens.base_best_estimate_t)}`,
+      note: [sens.note, '一个参数一张小图：横轴单位各不相同，不合并成双轴图。']
+    }, minis);
+    const wPanel = panel('敏感权重', { meta: sens.perturbation, flush: true },
+      table([{ h: '参数', k: 'name' }, { h: 'PDP 摆幅 (t)', k: 'swing_t', num: true, d: 0 },
+        { h: '权重', k: 'weight_pct', num: true, render: r => fmt(r.weight_pct, 1) + '%' }], sens.weights));
+    const wIdx = sens.weights.map((w, i) => ({ h: w.name, k: 'w' + i, num: true, render: r => fmt(r['w' + i], 1) + '%' }));
+    const uPanel = panel('各单元参数敏感权重', { meta: '权重最大的参数即该单元下一步的主攻方向', flush: true },
+      table([{ h: '单元', k: 'unit_id' }, { h: '最敏感', k: 'top_param', render: r => tag(r.top_param, 'brand') }, ...wIdx],
+        sens.units.map(u => ({ unit_id: u.unit_id, top_param: u.top_param, ...Object.fromEntries(u.weights.map((w, i) => ['w' + i, w.weight_pct])) })), { scroll: true }));
+    return [curvesPanel, el('div', { class: 'row c12' }, [wPanel, uPanel])];
   }
-}
+};
 
 /* ── 运行监控（管理层视角） ── */
 async function renderMonitor() {
-  const host = $('#tab-monitor'), token = S.monToken = (S.monToken || 0) + 1;
-  host.innerHTML = '<p class="empty">加载评估单元…</p>';
+  const host = $('#tab-monitor'), token = ++S.tok.monitor;
+  host.replaceChildren(loading('加载评估单元…'));
   await ensureUnits();
-  host.innerHTML = '';
-  host.appendChild(unitFilters({ date: true }, renderMonitor));
-  const body = el('div'); host.appendChild(body);
-  body.innerHTML = '<p class="empty">汇总中…</p>';
+  if (token !== S.tok.monitor || S.page !== 'monitor') return;
+  setCtx('monitor', unitCtx({ date: true, dateLabel: '计划对标基准日' }, renderMonitor));
+  host.replaceChildren(loading('汇总中…'));
   const dates = S.units.evaluation_dates;
   const comps = [];
   for (const d of dates) comps.push(await softApi('/unit/composition', { scope: S.scope, as_of: d, scenario: 'sec' }));
   const [indi, prod] = await Promise.all([softApi('/unit/indicators', { scope: S.scope, as_of_list: dates.join(',') }),
     softApi('/unit/production', { scope: S.scope, as_of: S.asOf })]);
-  if (token !== S.monToken) return;
-  body.innerHTML = '';
+  if (token !== S.tok.monitor) return;
   const C = COMP();
   const [prev, cur] = [comps[0], comps.at(-1)];
+  const out = [];
+  let monLeft = null;
 
+  const pa = indi._error ? null : indi.periods[0], pb = indi._error ? null : indi.periods.at(-1);
   if (!cur._error && !prev._error) {
-    const delta = cur.total_t - prev.total_t;
-    body.appendChild(el('div', { class: 'grid g5', style: 'margin-bottom:14px' }, [
-      stat(`PDP · ${cur.as_of}`, fmtT(cur.total_t), `较 ${prev.as_of} ${delta >= 0 ? '+' : ''}${fmtT(delta)}`),
-      stat(`本期产量 · ${cur.period_start_ym} ~ ${cur.period_end_ym}`, fmtT(cur.production_in_period_t), `上期 ${fmtT(prev.production_in_period_t)}`),
-      stat('本期新井', `${cur.new_wells.n_infill + cur.new_wells.n_extension} 口`, `提采 ${cur.new_wells.n_infill}｜扩边 ${cur.new_wells.n_extension}`),
-      stat('本期措施', `${cur.measures.n_in_period} 次`, `有效 ${cur.measures.n_effective} 次｜增加可采 ${fmtT(cur.measures.inc_eur_total_t)}`)]));
+    const dPdp = cur.total_t - prev.total_t;
+    out.push(kpiStrip([
+      { label: `PDP · ${cur.as_of}`, ...tU(cur.total_t), note: [`较 ${prev.as_of} `, delta(dPdp / 1e4, 2, ' 万 t')] },
+      { label: `本期产量 · ${cur.as_of.slice(0, 4)}`, ...tU(cur.production_in_period_t), note: `上期 ${fmtT(prev.production_in_period_t)}` },
+      { label: '本期新井', value: cur.new_wells.n_infill + cur.new_wells.n_extension, unit: '口', note: `提采 ${cur.new_wells.n_infill} · 扩边 ${cur.new_wells.n_extension}` },
+      { label: '本期措施', value: cur.measures.n_in_period, unit: '次', note: `有效 ${cur.measures.n_effective} · 增加可采 ${fmtT(cur.measures.inc_eur_total_t)}` },
+      ...(pb ? pb.groups.map(g => {
+        const a = pa.groups.find(x => x.group === g.group) || {};
+        return { label: `${g.name}综合分`, value: fmt(g.score, 1), unit: '分', note: ['较上期 ', delta(g.score - a.score, 1)] };
+      }) : [])]));
   }
 
   /* 指标两期对比 */
-  if (indi._error) body.appendChild(errCard('开发与经营指标', indi._error));
+  if (indi._error) out.push(errPanel('开发与经营指标', indi._error));
   else {
-    const pa = indi.periods[0], pb = indi.periods.at(-1);
-    const tiles = pb.groups.map(g => {
-      const a = pa.groups.find(x => x.group === g.group) || {};
-      return stat(`${g.name}综合分 · ${pb.as_of}`, fmt(g.score, 1), `${pa.as_of} 为 ${fmt(a.score, 1)}`);
-    });
     const rows = pb.indicators.map(r => {
       const a = pa.indicators.find(x => x.key === r.key) || {};
-      return { label: r.name, a: a.score, b: r.score,
+      return { label: r.name, a: a.score, b: r.score, r, prevRow: a,
         tip: `<b>${r.name}</b>` +
           `<div class="row"><span>${pa.as_of}</span><span class="mono">${fmt(a.value)} ${r.unit}｜${fmt(a.score, 1)} 分</span></div>` +
           `<div class="row"><span>${pb.as_of}</span><span class="mono">${fmt(r.value)} ${r.unit}｜${fmt(r.score, 1)} 分</span></div>` +
           `<div class="row"><span>锚点</span><span class="mono">优 ${r.good}｜差 ${r.bad}</span></div>` };
     });
-    const fig = el('figure', {}, legend([{ name: pa.as_of, color: cssVar('--c1-soft'), kind: 'dot' }, { name: pb.as_of, color: cssVar('--c1'), kind: 'dot' }]));
-    const plot = el('div'); fig.appendChild(plot);
+    const plot = el('div');
     dumbbell(plot, rows, { aColor: cssVar('--c1-soft'), bColor: cssVar('--c1') });
-    fig.appendChild(el('figcaption', { text: indi.scoring + '。两期对比用哑铃图而不是雷达图：雷达图的面积随轴的排列顺序变化，读不准差值。' }));
-    body.appendChild(card('开发与经营指标评价', `${indi.scope.name}｜得分 0~100`, [
-      el('div', { class: 'grid g2 inset', style: 'margin-bottom:10px' }, tiles), fig,
-      tableView([{ h: '指标', k: 'name' }, { h: '单位', k: 'unit' }, { h: pa.as_of + ' 值', k: 'va', num: true }, { h: '得分', k: 'sa', num: true, d: 1 },
-        { h: pb.as_of + ' 值', k: 'vb', num: true }, { h: '得分', k: 'sb', num: true, d: 1 }],
-        pb.indicators.map(r => { const a = pa.indicators.find(x => x.key === r.key) || {}; return { name: r.name, unit: r.unit, va: a.value, sa: a.score, vb: r.value, sb: r.score }; }))]));
+    const dPanel = panel('开发与经营指标评价', {
+      meta: `${indi.scope.name} · 得分 0 ~ 100`,
+      note: [indi.scoring + '。', '两期对比用哑铃图而不是雷达图：雷达图的面积随轴的排列顺序变化，读不准差值。']
+    }, [legend([{ name: pa.as_of, color: cssVar('--c1-soft'), kind: 'dot' }, { name: pb.as_of, color: cssVar('--c1'), kind: 'dot' }]), el('figure', {}, plot)]);
+    const tPanel = panel('指标明细', { meta: `${pb.as_of} 较 ${pa.as_of}`, flush: true },
+      table([{ h: '指标', k: 'label' },
+        { h: '本期值', k: 'v', num: true, render: x => `${fmt(x.r.value)} ${x.r.unit}` },
+        { h: '得分', k: 'b', num: true, d: 1 },
+        { h: '较上期', k: 'd', num: true, render: x => delta(x.b - x.a, 1) }], rows));
+    monLeft = el('div', { class: 'stack' }, dPanel);
+    out.push(el('div', { class: 'row c21' }, [monLeft, tPanel]));
   }
 
+  const lower = [];
   /* 计划与实际 */
-  if (prod._error) body.appendChild(el('div', { style: 'margin-top:14px' }, errCard('计划与实际对标', prod._error)));
+  if (prod._error) lower.push(errPanel('计划与实际对标', prod._error));
   else {
     const PT = [['new_wells', '新井投产（口）'], ['new_oil', '新井产油（t）'], ['measure_wells', '措施（井次）'], ['measure_inc', '措施增油（t）'], ['old_oil', '老井产油（t）']];
     const rows = PT.map(([k, label]) => ({ label, value: prod.period_totals[k].deviation_pct ?? 0, raw: prod.period_totals[k] }));
     const plot = el('div');
-    divergingBars(plot, rows, '%', { color: cssVar('--neutral-2'), suffix: '%', axisLabel: '← 低于计划    实际相对计划的偏差（%）    高于计划 →',
+    divergingBars(plot, rows, '%', { color: cssVar('--neutral-2'), suffix: '%', axisLabel: '← 低于计划　偏差（%）　高于计划 →',
       tip: r => `<b>${r.label}</b><div class="row"><span>计划</span><span class="mono">${fmt(r.raw.plan, 0)}</span></div>` +
         `<div class="row"><span>实际</span><span class="mono">${fmt(r.raw.actual, 0)}</span></div>` +
         `<div class="row"><span>偏差</span><span class="mono">${fmt(r.raw.deviation_pct, 1)}%</span></div>` });
-    body.appendChild(el('div', { style: 'margin-top:14px' }, card('计划与实际对标',
-      `${prod.scope.name}｜本期 ${prod.period_start_ym} ~ ${prod.period_end_ym}` + (prod.plan_available ? '' : '｜未导入计划数据'),
-      [el('figure', {}, [plot, el('figcaption', { text: '量级悬殊的几项（老井产油与措施增油差一个数量级）画偏差百分比，绝对值见表格视图。' })]),
-       tableView([{ h: '项目', k: 'label' }, { h: '计划', k: 'plan', num: true, d: 0 }, { h: '实际', k: 'actual', num: true, d: 0 }, { h: '偏差 %', k: 'deviation_pct', num: true, d: 1 }],
-         rows.map(r => ({ label: r.label, ...r.raw })))])));
+    lower.push(panel('计划与实际对标', {
+      meta: `${prod.scope.name} · 本期 ${prod.period_start_ym} ~ ${prod.period_end_ym}`,
+      actions: prod.plan_available ? [] : [tag('未导入计划数据', 'warn')],
+      note: '量级悬殊的几项（老井产油与措施增油差一个数量级）画偏差百分比，绝对值见表格。',
+      table: table([{ h: '项目', k: 'label' }, { h: '计划', k: 'plan', num: true, d: 0 }, { h: '实际', k: 'actual', num: true, d: 0 },
+        { h: '偏差', k: 'deviation_pct', num: true, render: r => r.deviation_pct == null ? '—' : signed(r.deviation_pct, 1) + '%' }],
+        rows.map(r => ({ label: r.label, ...r.raw })))
+    }, el('figure', {}, plot)));
   }
 
   /* 各单元 SEC 储量构成：两期对比 */
@@ -1278,181 +1589,226 @@ async function renderMonitor() {
       return [{ label: `${u.unit_id} · ${prev.as_of.slice(0, 4)}`, tip: `${u.unit_name} · ${prev.as_of}`, values: p ? p.components : {} },
         { label: `${u.unit_id} · ${cur.as_of.slice(0, 4)}`, tip: `${u.unit_name} · ${cur.as_of}`, values: u.components }];
     });
-    const fig = el('figure', {}, legend(C.map(c => ({ name: c.name, color: c.color, kind: 'box' }))));
-    const plot = el('div'); fig.appendChild(plot);
+    const plot = el('div');
     hStackedBars(plot, { rows, series: C, unit: 't', labelW: 150 });
-    fig.appendChild(el('figcaption', { text: 'SEC 价口径两期对比。上一期的"本期新井 / 本期措施"到了下一期已并入老井基础，所以老井基础逐期抬升是正常现象。' }));
-    body.appendChild(el('div', { style: 'margin-top:14px' }, card('各单元 SEC 储量构成（两期对比）', `${cur.scope.name}｜${prev.as_of} 与 ${cur.as_of}`, [fig,
-      tableView([{ h: '单元', k: 'unit_id' }, { h: '基准日', k: 'as_of' }, ...C.map(c => ({ h: c.name + ' (t)', k: c.key, num: true, d: 0 })), { h: '合计 (t)', k: 'total_t', num: true, d: 0 }],
-        [prev, cur].flatMap(cp => cp.units.map(u => ({ unit_id: u.unit_id, as_of: cp.as_of, total_t: u.total_t, ...u.components }))))])));
+    lower.push(panel('各单元 SEC 储量构成 · 两期', {
+      meta: `${prev.as_of} 与 ${cur.as_of} · SEC 价口径`,
+      note: '上一期的"本期新井 / 本期措施"到了下一期已并入老井基础，所以老井基础逐期抬升是正常现象。',
+      table: table([{ h: '单元', k: 'unit_id' }, { h: '基准日', k: 'as_of' }, ...C.map(c => ({ h: c.name + ' (t)', k: c.key, num: true, d: 0 })), { h: '合计 (t)', k: 'total_t', num: true, d: 0 }],
+        cur.units.flatMap(u => [prev, cur].map(cp => {
+          const x = cp.units.find(v => v.unit_id === u.unit_id) || { components: {} };
+          return { unit_id: u.unit_id, as_of: cp.as_of, total_t: x.total_t, ...x.components };
+        })), { scroll: true })
+    }, [legend(C.map(c => ({ name: c.name, color: c.color, kind: 'box' }))), el('figure', {}, plot)]));
   }
+  /* 计划对标面板较矮：放进左栏指标图下方，与右侧指标明细等高；两期构成单独占满一行 */
+  const [planPanel, unitsPanel] = lower;
+  if (monLeft) monLeft.appendChild(planPanel);
+  else out.push(el('div', { class: 'row' }, planPanel));
+  if (unitsPanel) out.push(el('div', { class: 'row' }, unitsPanel));
+  host.replaceChildren(...out);
 }
 
-/* ── 智能体对话：工具调用轨迹是这一页的主角 ── */
+/* ── 智能问答：工具调用轨迹是这一页的主角 ── */
 function renderChat() {
   const host = $('#tab-chat');
+  setCtx('chat', [tag('规则路由 + 固定工具链', 'brand'), tag('数值逐个回查')]);
   if (host.dataset.built) return;
   host.dataset.built = '1';
-  host.innerHTML = '';
 
-  const input = el('input', { type: 'text', placeholder: '例如：某口井的 SEC 储量预评估，或某个 SEC 单元的储量构成', style: 'flex:1;min-width:260px' });
-  const btn = el('button', { class: 'primary', text: '提问' });
-  const askBar = el('div', { class: 'filters' }, [input, btn]);
+  const input = el('textarea', { rows: 3, placeholder: '输入问题，例如：某口井的 SEC 储量预评估；某个 SEC 单元的储量为什么变化', 'aria-label': '问题' });
+  const btn = el('button', { class: 'btn primary', type: 'button' }, [icon('send'), '发送']);
   const aWell = () => S.current || (S.wells[0] && S.wells[0].well_code) || '';
-  const exBtn = (text, q) => el('button', { text, onclick: () => { input.value = q(); ask(); } });
-  const group = (label, kids) => el('div', { class: 'exgroup' }, [el('span', { class: 'exlabel', text: label }), ...kids]);
-  const unitGroup = group('SEC 单元', [el('span', { class: 'exlabel', text: '加载中…' })]);
-  const ex = el('div', { class: 'examples' }, [
-    group('单井', [['达峰预测', '什么时候达峰'], ['SEC 预评估', '的 SEC 储量预评估'], ['动静态互校', '动静态储量对得上吗'],
-      ['递减分析', '递减曲线分析']].map(([t, q]) => exBtn(t, () => `${aWell()} ${q}`))),
+  const qBtn = (text, q) => el('button', { type: 'button', text, onclick: () => { input.value = q(); ask(); } });
+  const unitGroup = el('div', {}, [el('div', { class: 'qg', text: 'SEC 单元' }), el('div', { class: 'qg', text: '加载中…' })]);
+  const qlist = el('div', { class: 'qlist' }, [
+    el('div', { class: 'qg', text: '单井' }),
+    ...[['达峰时间预测', '什么时候达峰'], ['SEC 储量预评估', '的 SEC 储量预评估'], ['动静态储量互校', '动静态储量对得上吗'],
+      ['递减曲线分析', '递减曲线分析']].map(([t, q]) => qBtn(t, () => `${aWell()} ${q}`)),
     unitGroup,
-    group('边界测试', [exBtn('缺井号（看反问）', () => '帮我预测达峰时间'),
-      exBtn('不存在的井（看异常处理）', () => 'GL-Z-9999 什么时候达峰'),
-      exBtn('越权请求（看边界拦截）', () => `把 ${aWell()} 的储量结果写回生产库`)])]);
+    el('div', { class: 'qg', text: '边界测试' }),
+    qBtn('缺井号（反问澄清）', () => '帮我预测达峰时间'),
+    qBtn('不存在的井（异常处理）', () => 'GL-Z-9999 什么时候达峰'),
+    qBtn('越权请求（边界拦截）', () => `把 ${aWell()} 的储量结果写回生产库`)]);
+  ensureBase().catch(() => null);
   ensureUnits().then(u => {
     const unit = u.plants[0].units[0].unit_id, plant = u.plants[0].plant_name;
     const [y0, y1] = [u.evaluation_dates[0].slice(0, 4), u.evaluation_dates.at(-1).slice(0, 4)];
-    const qs = [['储量构成', `${u.company.name} 的 SEC 储量构成`], ['对账与归因', `${unit} ${y0}年到${y1}年储量为什么变化`],
-      ['自然递减', `${plant} 扣3年和扣5年自然递减率`], ['措施效果', `${unit} 本期措施效果`], ['敏感性', `${u.company.name} 油价和成本敏感性`]];
-    unitGroup.replaceChildren(el('span', { class: 'exlabel', text: 'SEC 单元' }), ...qs.map(([t, q]) => exBtn(t, () => q)));
+    const qs = [['储量构成', `${u.company.name} 的 SEC 储量构成`], ['对账与变化归因', `${unit} ${y0}年到${y1}年储量为什么变化`],
+      ['自然递减率', `${plant} 扣3年和扣5年自然递减率`], ['措施效果', `${unit} 本期措施效果`], ['油价与成本敏感性', `${u.company.name} 油价和成本敏感性`]];
+    unitGroup.replaceChildren(el('div', { class: 'qg', text: 'SEC 单元' }), ...qs.map(([t, q]) => qBtn(t, () => q)));
   }).catch(() => unitGroup.remove());
 
-  const answer = el('div', { class: 'answer', text: '在上面提问，或点一个示例。' });
-  const answerCard = card('回答', '', answer);
-  const traceHost = el('div', { class: 'trace' }, [
-    ['意图路由', '先判断问的是单井还是 SEC 单元，再选意图；越权请求直接拦下'],
+  const meta = el('div', { class: 'ameta' });
+  const answer = el('div', { class: 'answer placeholder', text: '输入问题，或点选常用问题。' });
+  const composer = el('div', { class: 'composer' }, [input, el('div', { class: 'cbar' }, [
+    el('span', { class: 'hint', text: 'Enter 发送 · Shift + Enter 换行' }), el('span', { class: 'spacer' }), btn])]);
+  const ansPanel = panel('分析结果', { meta: '回答由工具返回值成文' }, [meta, answer]);
+  ansPanel.appendChild(composer);
+
+  const idle = () => [['意图路由', '先判断问的是单井还是 SEC 单元，再选意图；越权请求直接拦下'],
     ['槽位抽取', '井号、评估对象、年份、价格情景；缺了就反问，不猜'],
     ['按计划调工具', '固定的工具链，大模型只填参数；工具失败如实转述'],
     ['成文与数值回查', '回答里的每个数字逐个回查工具返回值，对不上就重写或降级为模板']
-  ].map(([t, d], i) => el('div', { class: 'tstep' }, [
-    el('div', {}, el('div', { class: 'tdot', style: 'background:var(--rule)' })),
-    el('div', {}, [el('div', { class: 'tname', text: `${i + 1}. ${t}` }), el('div', { class: 'targs', text: d })])])));
-  const guardBox = el('div', { style: 'margin-bottom:12px' });
-  const traceCard = card('工具调用轨迹', '大模型没有直接接触数据：它只能调下面这些工具，回答里的每个数字都要能在工具返回值里找到。',
-    [guardBox, traceHost]);
+  ].map(([t, d], i) => el('div', { class: 'tstep idle' }, [el('div', {}, el('div', { class: 'tdot' })),
+    el('div', {}, [el('div', { class: 'tname', text: `${i + 1}. ${t}` }), el('div', { class: 'targs', text: d })])]));
+  const trace = el('div', { class: 'trace' }, idle());
+  const tracePanel = panel('调用轨迹', { note: '它只能调用下列工具；回答里的每个数字都要能在工具返回值里找到。' }, trace);
+  tracePanel.querySelector('.pb').classList.add('flush');
 
-  host.appendChild(askBar); host.appendChild(ex);
-  host.appendChild(el('div', { class: 'chatgrid', style: 'margin-top:14px' }, [answerCard, traceCard]));
+  host.replaceChildren(el('div', { class: 'chat' }, [
+    el('div', { class: 'qcol' }, panel('常用问题', { flush: true }, qlist)), ansPanel,
+    el('div', { class: 'trace-col' }, tracePanel)]));
 
   async function ask() {
     const q = input.value.trim(); if (!q) return;
-    btn.disabled = true; answer.textContent = '思考中…'; traceHost.innerHTML = ''; guardBox.innerHTML = '';
+    btn.disabled = true; answer.className = 'answer placeholder'; answer.textContent = '分析中…';
+    meta.replaceChildren(); trace.replaceChildren(loading('调用工具中…'));
     try {
       const r = await fetch('/api/v1/agent/ask', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q })
       });
       const a = await r.json();
-      answer.textContent = a.answer;
+      answer.className = 'answer'; answer.textContent = a.answer;
       const g = a.guard || {};
-      guardBox.appendChild(el('div', { class: 'legend' }, [
-        el('span', { class: 'chip ' + (g.ok ? 'ok' : 'crit'), text: g.ok ? `数值一致性通过（校验 ${g.numbers_checked} 个数字）` : `数值一致性未通过（${(g.violations || []).length} 处）` }),
-        el('span', { class: 'chip solid', text: `意图 ${a.intent}（${a.route.method}｜置信度 ${a.route.confidence}）` }),
-        el('span', { class: 'chip solid mono', text: a.elapsed_ms + ' ms' }),
-        a.degraded ? el('span', { class: 'chip warn', text: '已降级为模板成文' }) : null,
+      meta.replaceChildren(...[
+        tag(g.ok ? `数值一致性通过 · ${g.numbers_checked} 个数字` : `数值一致性未通过 · ${(g.violations || []).length} 处`, g.ok ? 'ok' : 'crit'),
+        tag(`意图 ${a.intent} · ${a.route.method} · 置信度 ${a.route.confidence}`),
+        tag(a.elapsed_ms + ' ms'),
+        a.degraded ? tag('已降级为模板成文', 'warn') : null,
         (a.citations && a.citations.cited && a.citations.cited.length)
-          ? el('span', { class: 'chip ' + (a.citations.invalid.length ? 'crit' : 'ok'), text: `条款引用 ${a.citations.cited.length} 条，无效 ${a.citations.invalid.length}` }) : null
-      ].filter(Boolean)));
-      if (!a.tool_trace.length) {
-        traceHost.appendChild(el('p', { class: 'empty', text: '本次未调用任何工具（反问澄清或越权拦截）' }));
-      }
-      a.tool_trace.forEach(t => traceHost.appendChild(el('div', { class: 'tstep ' + t.status }, [
+          ? tag(`条款引用 ${a.citations.cited.length} 条 · 无效 ${a.citations.invalid.length}`, a.citations.invalid.length ? 'crit' : 'ok') : null
+      ].filter(Boolean));
+      trace.replaceChildren(...(a.tool_trace.length ? a.tool_trace.map(t => el('div', { class: 'tstep ' + t.status }, [
         el('div', {}, el('div', { class: 'tdot' })),
         el('div', {}, [
-          el('div', { class: 'tname' }, [t.tool, ' ',
-          el('span', { class: 'chip ' + (t.status === 'ok' ? 'ok' : 'crit'), text: t.status }), ' ',
-          el('span', { class: 'chip solid mono', text: t.elapsed_ms + 'ms' })]),
+          el('div', { class: 'tname' }, [t.tool, tag(t.status, t.status === 'ok' ? 'ok' : 'crit'), el('span', { class: 'muted mono', style: 'font-size:11px', text: t.elapsed_ms + ' ms' })]),
           el('div', { class: 'targs mono', text: JSON.stringify(t.args) }),
-          t.error ? el('div', { class: 'terr', text: t.error }) : null].filter(Boolean))])));
-      traceHost.appendChild(el('p', { class: 'sub', style: 'margin-top:12px',
-        text: 'trace_id ' + a.trace_id + '：全链路留痕已写入 audit_log，可回溯到输入数据与模型版本。' }));
+          t.error ? el('div', { class: 'terr', text: t.error }) : null])])) : [emptyState('本次未调用任何工具（反问澄清或越权拦截）')]),
+        el('div', { class: 'targs', style: 'padding:10px 0', text: `trace_id ${a.trace_id} · 全链路留痕已写入 audit_log，可回溯到输入数据与模型版本。` }));
     } catch (e) {
-      answer.textContent = '请求失败：' + e.message;
+      answer.className = 'answer'; answer.textContent = '请求失败：' + e.message; trace.replaceChildren(...idle());
     } finally { btn.disabled = false; }
   }
   btn.addEventListener('click', ask);
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); } });
 }
 
-/* ── 评测 ── */
+/* ── 模型评测 ── */
 async function renderEval() {
-  const host = $('#tab-eval'); host.innerHTML = '<p class="empty">加载中…</p>';
+  const host = $('#tab-eval');
+  host.replaceChildren(loading());
   const e = await api('/eval/summary');
-  host.innerHTML = '';
+  if (S.page !== 'eval') return;
   const CN = {
     intent_accuracy: '意图识别准确率', slot_f1: '槽位抽取 F1', tool_chain_accuracy: '工具链正确率',
     numeric_consistency: '数值一致性通过率', citation_hit_rate: '条款引用命中率',
-    hallucination_rate: '无据结论率（幻觉率）', p95_latency_ms: 'P95 响应时间 (ms)',
-    human_intervention_rate: '人工干预率'
+    hallucination_rate: '无据结论率（幻觉率）', p95_latency_ms: 'P95 响应时间 (ms)', human_intervention_rate: '人工干预率'
   };
-  if (!e.agent) {
-    host.appendChild(card('智能体评测', e.hint, el('p', { class: 'empty', text: '尚未运行评测' })));
-  } else {
+  const out = [];
+  if (!e.agent) out.push(alertBar('info', '尚未运行智能体评测', e.hint));
+  else {
     const m = e.agent.metrics, t = e.agent.targets, p = m.pass_targets;
-    const rows = Object.keys(t).map(k => ({
-      k: CN[k] || k, v: m[k], target: t[k], ok: p[k],
-      d: k === 'p95_latency_ms' ? 0 : 2
-    }));
-    const c = card('智能体层指标', `评测集 ${m.n_cases} 条，六类构成。数值一致性由 guard.py 逐个数字回查工具返回值保证，不是模型自觉。`,
-      table([{ h: '指标', k: 'k' },
-      { h: '实测', k: 'v', num: true, render: r => el('span', { class: 'mono', text: r.d ? Number(r.v).toFixed(r.d) : fmt(r.v, 0) }) },
-      { h: '目标', k: 'target', num: true, render: r => el('span', { class: 'mono', text: r.d ? Number(r.target).toFixed(r.d) : fmt(r.target, 0) }) },
-      { h: '达标', k: 'ok', render: r => el('span', { class: 'chip ' + (r.ok ? 'ok' : 'crit'), text: r.ok ? '是' : '否' }) }], rows));
+    const nPass = Object.values(p).filter(Boolean).length, nAll = Object.keys(t).length;
+    setCtx('eval', [tag(`评测集 ${m.n_cases} 条`), tag(`达标 ${nPass} / ${nAll}`, nPass === nAll ? 'ok' : 'warn')]);
+    out.push(kpiStrip([
+      { label: '意图识别准确率', value: fmt(m.intent_accuracy * 100, 1), unit: '%', note: `目标 ≥ ${fmt(t.intent_accuracy * 100, 0)}%` },
+      { label: '数值一致性', value: fmt(m.numeric_consistency * 100, 1), unit: '%', note: '由 guard.py 逐个数字回查' },
+      { label: '幻觉率', value: fmt(m.hallucination_rate * 100, 1), unit: '%', note: `目标 ≤ ${fmt(t.hallucination_rate * 100, 0)}%` },
+      { label: 'P95 响应', value: fmt(m.p95_latency_ms, 0), unit: 'ms', note: `中位 ${fmt(m.median_latency_ms, 0)} ms` },
+      { label: '指标达标', value: `${nPass} / ${nAll}`, note: `人工干预率 ${fmt(m.human_intervention_rate * 100, 1)}%` }]));
+    const rows = Object.keys(t).map(k => ({ k: CN[k] || k, v: m[k], target: t[k], ok: p[k], d: k === 'p95_latency_ms' ? 0 : 2 }));
+    const aPanel = panel('智能体层指标', {
+      meta: `评测集 ${m.n_cases} 条 · 六类构成`, flush: true,
+      note: ['数值一致性由 guard.py 逐个数字回查工具返回值保证，不是模型自觉。',
+        '150 条用例由模板按井号铺开生成，是我们自己出的题，不是硬基准；真正有价值的评测集要由业务方出题。']
+    }, table([{ h: '指标', k: 'k' },
+      { h: '实测', k: 'v', num: true, render: r => r.d ? Number(r.v).toFixed(r.d) : fmt(r.v, 0) },
+      { h: '目标', k: 'target', num: true, render: r => r.d ? Number(r.target).toFixed(r.d) : fmt(r.target, 0) },
+      { h: '状态', k: 'ok', render: r => tag(r.ok ? '达标' : '未达标', r.ok ? 'ok' : 'crit') }], rows));
     const CAT_CN = { normal: '正常问法', colloquial: '口语省略', composite: '跨模块组合', missing_data: '缺数据',
       out_of_scope: '越权请求', adversarial: '诱导性提问' };
     const byCat = Object.entries(e.agent.by_category).map(([k, v]) => ({ cat: CAT_CN[k] || k, ...v }));
-    const c2 = card('分类别表现', '诱导性提问与越权请求是幻觉最容易冒出来的地方，单独看。',
+    const cPanel = panel('分类别表现', { meta: '诱导性提问与越权请求是幻觉最容易冒出来的地方', flush: true },
       table([{ h: '类别', k: 'cat' }, { h: '用例数', k: 'n', num: true, d: 0 },
-      { h: '意图准确率', k: 'intent_accuracy', num: true, render: r => el('span', { class: 'mono', text: Number(r.intent_accuracy).toFixed(2) }) },
-      { h: '数值一致性', k: 'numeric_consistency', num: true, render: r => el('span', { class: 'mono', text: Number(r.numeric_consistency).toFixed(2) }) }], byCat));
-    host.appendChild(el('div', { class: 'grid g2' }, [c, c2]));
-    host.appendChild(card('这张表的边界', '',
-      el('p', { class: 'sub', style: 'margin:0',
-        text: '150 条用例由模板按井号铺开生成，是我们自己出的题，不是硬基准。真正有价值的评测集要由业务方出题。' })));
+        { h: '意图准确率', k: 'intent_accuracy', num: true, render: r => Number(r.intent_accuracy).toFixed(2) },
+        { h: '数值一致性', k: 'numeric_consistency', num: true, render: r => Number(r.numeric_consistency).toFixed(2) }], byCat));
+    out.push(el('div', { class: 'row c2' }, [aPanel, cPanel]));
   }
   if (e.algo) {
     const SPLIT_CN = { time: '时间外推', group: '按区块留出', random: '随机（仅对照）' };
-    const rows = e.algo.rows.map(r => ({ ...r, split: SPLIT_CN[r.split] || r.split, target: TARGET_CN[r.target] || r.target }));
-    host.appendChild(el('div', { style: 'margin-top:14px' }, card('切分方式对比', e.algo.conclusion,
-      table([{ h: '切分', k: 'split' }, { h: '目标', k: 'target' }, { h: 'MAE', k: 'mae', num: true },
-      { h: '覆盖率', k: 'coverage', num: true }, { h: '相对基线', k: 'gain_pct', num: true, d: 1 }], rows))));
+    const order = Object.keys(SPLIT_CN);
+    const splits = [...new Set(e.algo.rows.map(r => r.split))].sort((a, b) => (order.indexOf(a) + 99 * (order.indexOf(a) < 0)) - (order.indexOf(b) + 99 * (order.indexOf(b) < 0)));
+    const rows = splits.flatMap(s => [{ _group: SPLIT_CN[s] || s },
+      ...e.algo.rows.filter(r => r.split === s).map(r => ({ ...r, target: TARGET_CN[r.target] || r.target }))]);
+    out.push(el('div', { class: 'row' }, panel('算法层 · 切分方式对比', { meta: '对外报告一律使用时间外推切分的指标', note: e.algo.conclusion, flush: true },
+      table([{ h: '目标', k: 'target' }, { h: 'MAE', k: 'mae', num: true }, { h: '覆盖率', k: 'coverage', num: true },
+        { h: '相对基线 (%)', k: 'gain_pct', num: true, d: 1 }], rows))));
   }
+  host.replaceChildren(...out);
 }
 
 /* ══════════════════════════════════════════════════════════════
-   5. 路由与启动
+   5. 路由与启动（hash 路由：#/unit 可直接收藏、分享）
    ══════════════════════════════════════════════════════════════ */
-const RENDER = { overview: renderOverview, well: renderWell, reserves: renderReserves, unit: renderUnit, monitor: renderMonitor, chat: renderChat, eval: renderEval };
+const PAGES = {
+  overview: { group: '工作台', title: '总览', icon: 'dash', render: renderOverview },
+  well: { group: '单井分析', title: '全生命周期预测', icon: 'trend', render: renderWell },
+  reserves: { group: '单井分析', title: '储量与 SEC 预评估', icon: 'db', render: renderReserves },
+  unit: { group: 'SEC 单元', title: '构成评估', icon: 'layers', render: renderUnit },
+  monitor: { group: 'SEC 单元', title: '运行监控', icon: 'bars', render: renderMonitor },
+  chat: { group: '智能分析', title: '智能问答', icon: 'chat', render: renderChat },
+  eval: { group: '系统', title: '模型评测', icon: 'check', render: renderEval }
+};
+(function buildNav() {
+  const nav = $('#nav');
+  let g = null;
+  Object.entries(PAGES).forEach(([k, p]) => {
+    if (p.group !== g) { g = p.group; nav.appendChild(el('div', { class: 'ngroup', text: g })); }
+    nav.appendChild(el('a', { href: '#/' + k, 'data-page': k }, [icon(p.icon), el('span', { text: p.title })]));
+  });
+})();
+
 function switchTab(name) {
-  document.querySelectorAll('nav.tabs button').forEach(b =>
-    b.setAttribute('aria-selected', String(b.dataset.tab === name)));
-  Object.keys(RENDER).forEach(t => { $('#tab-' + t).hidden = t !== name; });
-  const f = RENDER[name];
-  if (f) Promise.resolve(f()).catch(e => { $('#tab-' + name).innerHTML = ''; $('#tab-' + name).appendChild(el('p', { class: 'err', text: '加载失败：' + e.message })); });
+  if (!PAGES[name]) name = 'overview';
+  const p = PAGES[name];
+  S.page = name; hideTip();
+  document.querySelectorAll('#nav a').forEach(a => {
+    if (a.dataset.page === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  });
+  Object.keys(PAGES).forEach(k => { $('#tab-' + k).hidden = k !== name; });
+  $('#crumb').replaceChildren(el('span', { text: p.group }), el('span', { class: 'sep', text: '/' }), el('span', { class: 'cur', text: p.title }));
+  $('#ptitle').textContent = p.title;
+  document.title = `${p.title} · 储量评估系统`;
+  $('#ctx').replaceChildren();
+  if (location.hash !== '#/' + name) history.replaceState(null, '', '#/' + name);
+  Promise.resolve(p.render()).catch(e => {
+    if (S.page === name) $('#tab-' + name).replaceChildren(alertBar('crit', '加载失败', e.message));
+  });
 }
-function pickWell(code) { S.current = code; }
-document.querySelectorAll('nav.tabs button').forEach(b =>
-  b.addEventListener('click', () => switchTab(b.dataset.tab)));
+const routeFromHash = () => (location.hash.match(/^#\/(\w+)/) || [])[1] || 'overview';
+addEventListener('hashchange', () => { if (routeFromHash() !== S.page) { switchTab(routeFromHash()); scrollTo(0, 0); } });
 
 const themeBtn = $('#themeBtn');
+const isDark = () => {
+  const t = document.documentElement.getAttribute('data-theme');
+  return t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches);
+};
 function applyTheme(t) {
   if (t) document.documentElement.setAttribute('data-theme', t);
   else document.documentElement.removeAttribute('data-theme');
-  const dark = t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches);
-  themeBtn.textContent = dark ? '浅色' : '深色';
+  themeBtn.replaceChildren(icon(isDark() ? 'sun' : 'moon'));
+  themeBtn.title = isDark() ? '切换到浅色' : '切换到深色';
 }
 themeBtn.addEventListener('click', () => {
-  const cur = document.documentElement.getAttribute('data-theme');
-  const dark = cur === 'dark' || (!cur && matchMedia('(prefers-color-scheme: dark)').matches);
-  const next = dark ? 'light' : 'dark';
+  const next = isDark() ? 'light' : 'dark';
   try { localStorage.setItem('theme', next); } catch (_) { }
   applyTheme(next);
-  const active = document.querySelector('nav.tabs button[aria-selected="true"]');
-  if (active) switchTab(active.dataset.tab);   /* 重画图表，让 SVG 取到新的色值 */
+  if (S.page) switchTab(S.page);   /* 重画图表，让 SVG 取到新的色值 */
 });
 try { applyTheme(localStorage.getItem('theme')); } catch (_) { applyTheme(null); }
 
-switchTab('overview');
+switchTab(routeFromHash());
 </script>
 </body>
 </html>
