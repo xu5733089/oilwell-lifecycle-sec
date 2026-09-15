@@ -204,6 +204,8 @@ routes = [
     Route(f"{API}/unit/categories", _wrap(S.unit_proved_categories, "scope"), methods=["POST", "GET"]),
     Route(f"{API}/unit/category-tracking", _wrap(S.unit_category_tracking, "scope"), methods=["POST", "GET"]),
     Route(f"{API}/unit/pud-disclosure", _wrap(S.unit_pud_disclosure, "scope"), methods=["POST", "GET"]),
+    Route(f"{API}/unit/standardized-measure", _wrap(S.unit_standardized_measure, "scope"), methods=["POST", "GET"]),
+    Route(f"{API}/unit/probabilistic", _wrap(S.unit_probabilistic_reserves, "scope"), methods=["POST", "GET"]),
     Route(f"{API}/unit/depletion", _wrap(S.unit_depletion_impairment, "scope"), methods=["POST", "GET"]),
     # 配置与业务数据写入：只走 HTTP 与界面、记审计日志，不注册为智能体工具（智能体一律只读）
     Route(f"{API}/indicator-profiles", _wrap(S.list_indicator_profiles), methods=["GET"]),

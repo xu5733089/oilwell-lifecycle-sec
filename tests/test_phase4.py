@@ -105,3 +105,102 @@ class TestPudDisclosure(unittest.TestCase):
     def test_first_date_has_no_prior_period(self):
         with self.assertRaises(self.S.KernelError):
             self.S.unit_pud_disclosure(self.scope, from_as_of=self.dates[-1], to_as_of=self.dates[-1])
+
+
+class TestStandardizedMeasureMath(unittest.TestCase):
+    def test_exponential_profile_matches_reserves(self):
+        from src.sec import finance
+        v = finance.exponential_profile(12000.0, 300.0, horizon_months=600)
+        self.assertAlmostEqual(v.sum(), 12000.0, delta=12000.0 * 0.005)
+        self.assertEqual(len(finance.exponential_profile(0.0, 300.0)), 0)
+
+    def test_identities_tax_and_discount(self):
+        from src.sec import finance
+        pd_vol = finance.exponential_profile(20000.0, 400.0)
+        wells = [dict(start_month=13, volume_t=np.full(60, 150.0), capex_wan=500.0)]
+        kw = dict(pd_volume_t=pd_vol, pd_opex_usd_per_t=120.0, pud_wells=wells, opex_per_well_month_usd=3000.0,
+                  net_revenue_usd_per_t=450.0, fx_cny_per_usd=7.1, development_now_wan=30.0)
+        sched = finance.cash_flow_schedule(**kw)
+        self.assertAlmostEqual(sched["development_cost_wan"][12], 500.0)                 # 投资记在投产前一个月（第 2 年）
+        self.assertAlmostEqual(sched["development_cost_wan"][0], 30.0)
+        a = finance.standardized_measure(sched, tax_rate=0.0)
+        b = finance.standardized_measure(sched, tax_rate=0.25)
+        self.assertAlmostEqual(a["standardized_measure_wan"], a["pre_tax_discounted_wan"], places=6)
+        self.assertLess(b["standardized_measure_wan"], a["standardized_measure_wan"])
+        for r in (a, b):
+            self.assertAlmostEqual(r["future_net_cash_flows_wan"],
+                                   r["future_cash_inflows_wan"] - r["future_production_costs_wan"]
+                                   - r["future_development_costs_wan"] - r["future_income_tax_wan"], places=6)
+            self.assertAlmostEqual(r["standardized_measure_wan"], r["future_net_cash_flows_wan"] - r["discount_wan"], places=6)
+            self.assertAlmostEqual(sum(y["discounted_wan"] for y in r["annual"]), r["standardized_measure_wan"], places=6)
+        c = finance.standardized_measure(sched, tax_rate=0.25, discount_rate=0.2)
+        self.assertLess(c["standardized_measure_wan"], b["standardized_measure_wan"])
+
+
+class TestStandardizedMeasureService(unittest.TestCase):
+    def test_summary_units_and_changes_close(self):
+        from src.api import services as S
+        u = S.list_units()
+        d = S.unit_standardized_measure(u["company"]["name"], as_of=str(u["evaluation_dates"][-1]))
+        sm = d["summary"]
+        self.assertAlmostEqual(sum(x["standardized_measure_wan"] for x in d["units"]), sm["standardized_measure_wan"], delta=1.0)
+        self.assertLessEqual(sm["standardized_measure_wan"], sm["future_net_cash_flows_wan"] + 1.0)
+        rows = {r["key"]: r["value"] for r in d["changes"]["table"]}
+        body = sum(v for k, v in rows.items() if k not in ("opening", "closing"))
+        self.assertAlmostEqual(rows["opening"] + body, rows["closing"], delta=1.0)
+        self.assertLess(rows["sales_net"], 0)
+        self.assertGreater(rows["accretion"], 0)
+
+
+class TestProbabilisticAggregation(unittest.TestCase):
+    def setUp(self):
+        rng = np.random.default_rng(11)
+        self.best = rng.lognormal(np.log(800.0), 0.6, 300)
+        self.groups = np.array(["A", "B", "C"])[np.arange(300) % 3]
+        self.bucket = np.full(300, 24)
+        self.errors = {24: np.concatenate([rng.normal(0.0, 0.09, 180), rng.normal(-0.45, 0.15, 20)])}   # 带左尾
+
+    def test_single_group_fully_correlated_equals_sum_of_well_quantiles(self):
+        """只有一个分组且 ρ = 1：所有井取同一分位，汇总的 10% 分位 = 逐井 10% 分位之和（误差用平滑样本，避免分位函数过陡放大抽样噪声）。"""
+        from src.sec import probabilistic as P
+        smooth = {24: np.random.default_rng(5).normal(0.0, 0.1, 400)}
+        r = P.aggregate(self.best, np.full(len(self.best), "A"), self.bucket, smooth, rho=1.0, n_sims=3000, seed=1)
+        self.assertAlmostEqual(r["p10_t"], r["sum_well_p10_t"], delta=0.01 * r["sum_well_p10_t"])
+
+    def test_rho_one_synchronizes_within_group_only(self):
+        """ρ = 1 只让同一区块内的井同步；区块之间仍独立，多分组时汇总 10% 分位仍高于逐井分位之和。"""
+        from src.sec import probabilistic as P
+        r = P.aggregate(self.best, self.groups, self.bucket, self.errors, rho=1.0, n_sims=3000, seed=1)
+        self.assertGreater(r["p10_t"], r["sum_well_p10_t"])
+
+    def test_independence_diversifies_low_estimate(self):
+        from src.sec import probabilistic as P
+        r0 = P.aggregate(self.best, self.groups, self.bucket, self.errors, rho=0.0, n_sims=3000, seed=1)
+        r1 = P.aggregate(self.best, self.groups, self.bucket, self.errors, rho=1.0, n_sims=3000, seed=1)
+        self.assertGreater(r0["p10_t"], r1["p10_t"])
+        self.assertGreater(r0["aggregation_gain_t"], 0)
+        self.assertLessEqual(r0["p10_t"], r0["p50_t"])
+        self.assertLessEqual(r0["p50_t"], r0["p90_t"])
+
+    def test_icc_detects_group_effect(self):
+        from src.sec import probabilistic as P
+        rng = np.random.default_rng(2)
+        g = np.repeat(np.arange(10), 30)
+        v = rng.normal(0, 1, 10)[g] + rng.normal(0, 1, 300)
+        self.assertGreater(P.icc_oneway(v, g)["icc"], 0.3)
+        self.assertLess(P.icc_oneway(rng.normal(0, 1, 300), g)["icc"], 0.15)
+
+
+class TestProbabilisticService(unittest.TestCase):
+    def test_company_aggregation_is_consistent(self):
+        from src.api import services as S
+        u = S.list_units()
+        p = S.unit_probabilistic_reserves(u["company"]["name"], as_of=str(u["evaluation_dates"][-1]), n_sims=1500)
+        by_rho = {r["rho"]: r for r in p["results"]}
+        self.assertIn(0.0, by_rho)
+        self.assertIn(1.0, by_rho)
+        self.assertGreaterEqual(by_rho[0.0]["p10_t"], by_rho[1.0]["p10_t"])
+        self.assertEqual(sum(x["n_wells"] for x in p["units"]), p["n_wells"])
+        for r in p["results"]:
+            self.assertLessEqual(r["p10_t"], r["p50_t"])
+            self.assertLessEqual(r["p50_t"], r["p90_t"])

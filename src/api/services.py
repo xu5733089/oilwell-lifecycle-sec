@@ -30,6 +30,7 @@ from ..sec import classify as sec_classify
 from ..sec import composition as sec_composition
 from ..sec import economics
 from ..sec import finance
+from ..sec import probabilistic as sec_prob
 from ..sec import indicators as sec_indicators
 from ..sec import reconcile as sec_reconcile
 
@@ -82,7 +83,7 @@ def reset_cache() -> None:
     _well_agg.cache_clear()
     for f in (_units, _monthly, _events, _codes, _new_wells, _new_well_model_estimates, _evaluate,
               _eval_fingerprint, _locations, _producing_xy, _first_prod_map, _asset_book,
-              _unit_depletion_chain, _indicator_periods, _physics_library, _retriever):
+              _unit_depletion_chain, _indicator_periods, _physics_library, _retriever, _sm_inputs):
         f.cache_clear()
     _FIT_CACHE.clear()
     for w in _CACHED:
@@ -2046,6 +2047,192 @@ def unit_depletion_impairment(scope: str, as_of: str = "2026-12-31", trace_id: O
                         "吨油净现金流 = 吨油净收入 − 吨油操作成本",
                         "减值额 = max(0，折耗后账面价值 − 可收回金额)；减值后期末净值作为下一期期初"],
                 note="简化口径：不含 PUD 未来投资与弃置费，剖面为单元级指数递减；采油厂/公司为下属单元相加（减值按单元逐个测试后相加）")
+
+
+@functools.lru_cache(maxsize=64)
+def _sm_inputs(unit_id: str, as_of: str, value_deck: str) -> Dict:
+    """一个单元一期的标准化计量。数量取基准日 as_of 的 SEC 价评估；价格与成本取 value_deck ——
+    两者分开，是为了变动表里"价格与成本变化"能用同一套数量、换一套价格重算。"""
+    fin, pc = _su()["finance"], _su()["pud"]
+    su, _ = _units()
+    opex_factor = float(su.set_index("unit_id").loc[unit_id, "opex_factor"])
+    deck = economics.deck_for(as_of)
+    ev = _evaluate(unit_id, as_of, deck, "sec")
+    econ_q = economics.economic_limit_rate(deck, "sec", opex_factor=opex_factor)
+    econ_v = economics.economic_limit_rate(value_deck, "sec", opex_factor=opex_factor)
+    end = as_of[:7]
+    now = workload.ym_to_idx(end)
+    mon = _monthly()
+    recent = mon[mon["well_id"].isin(set(_wells_of([unit_id]))) & (mon["ym"] >= workload.idx_to_ym(now - 2)) & (mon["ym"] <= end)]
+    monthly_volume = float(recent["oil_t"].sum()) / 3.0
+    well_months = float((recent["days_on"] > 0).sum()) / 3.0
+    opex_t = well_months * float(econ_v["opex_per_well_month_usd"]) / monthly_volume if monthly_volume > 0 else 0.0
+    pd_t = float(ev["total_t"] + ev["pdnp"]["reserves_t"])
+    pud_wells = []
+    tc = np.asarray(ev["type_curve"].get("rate") or [], dtype=float)
+    if len(tc) >= 2:
+        fc = sec_composition._analog_forecast(tc, 0, float(pc["certainty_factor"]))
+        kp = int(np.argmax(fc))
+        alive = np.ones(len(fc), dtype=bool)
+        alive[kp:] = np.cumprod(fc[kp:] >= econ_q["q_econ"]).astype(bool)       # 与 PUD 取值同一截断
+        per_well = (np.where(alive, fc, 0.0) * workload.DAYS_PER_MONTH)[: int(np.flatnonzero(alive).max()) + 1]
+        for loc in ev["pud"]["locations"]:
+            if loc["status"] == "booked":
+                pud_wells.append(dict(start_month=max(workload.ym_to_idx(loc["planned_drill_ym"]) - now, 0) + 1,
+                                      volume_t=per_well, capex_wan=float(loc["capex_wan"])))
+    n_pdnp = int(ev["pdnp"]["n_booked"])
+    sched = finance.cash_flow_schedule(
+        pd_volume_t=finance.exponential_profile(pd_t, monthly_volume), pd_opex_usd_per_t=opex_t, pud_wells=pud_wells,
+        opex_per_well_month_usd=float(econ_v["opex_per_well_month_usd"]),
+        net_revenue_usd_per_t=float(econ_v["net_revenue_usd_per_tonne"]), fx_cny_per_usd=float(fin["fx_cny_per_usd"]),
+        development_now_wan=n_pdnp * float(fin["restart_cost_wan"]))
+    sm = finance.standardized_measure(sched, float(fin.get("income_tax_rate", 0.25)))
+    return dict(sm, unit_id=unit_id, as_of=as_of, value_deck=value_deck, pd_reserves_t=pd_t,
+                pud_reserves_t=float(ev["pud"]["reserves_t"]), n_pud_locations=len(pud_wells), n_pdnp_wells=n_pdnp,
+                production_in_period_t=float(ev["production_in_period_t"]),
+                price_usd_bbl=float(econ_v["price_usd_bbl"]), net_revenue_usd_per_t=float(econ_v["net_revenue_usd_per_tonne"]),
+                opex_usd_per_t_pd=opex_t)
+
+
+SM_KEYS = ("future_cash_inflows_wan", "future_production_costs_wan", "future_development_costs_wan", "future_income_tax_wan",
+           "future_net_cash_flows_wan", "discount_wan", "standardized_measure_wan", "pre_tax_discounted_wan", "discounted_tax_wan",
+           "volume_t")
+
+
+@cached_service
+def unit_standardized_measure(scope: str, as_of: str = "2026-12-31", trace_id: Optional[str] = None) -> Dict:
+    """ASC 932 标准化计量：证实储量未来净现金流的 10% 折现值，及与上期相比的变动表（按构造闭合）。"""
+    sc = _scope(scope)
+    as_of, deck = _as_of(as_of)
+    fin = _su()["finance"]
+    su, _ = _units()
+    names = su.set_index("unit_id")["unit_name"]
+    rows = [_sm_inputs(u, as_of, deck) for u in sc["unit_ids"]]
+    tot = {k: float(sum(r[k] for r in rows)) for k in SM_KEYS}
+    years = max((r["life_years"] for r in rows), default=0)
+    annual = []
+    for y in range(years):
+        cells = [r["annual"][y] for r in rows if y < len(r["annual"])]
+        annual.append(dict(year=y + 1, **{k: _r(sum(c[k] for c in cells), 1) for k in
+                                          ("volume_t", "inflow_wan", "production_cost_wan", "development_cost_wan",
+                                           "income_tax_wan", "net_cash_flow_wan", "discounted_wan")}))
+    dates = [str(d) for d in _su()["evaluation_dates"]]
+    k = dates.index(as_of)
+    changes = None
+    if k > 0:
+        prev = dates[k - 1]
+        pdeck = economics.deck_for(prev)
+        opening = [_sm_inputs(u, prev, pdeck) for u in sc["unit_ids"]]
+        at_prev_prices = [_sm_inputs(u, as_of, pdeck) for u in sc["unit_ids"]]
+        fx = float(fin["fx_cny_per_usd"]) / 1e4
+        o_sm = sum(r["standardized_measure_wan"] for r in opening)
+        c_sm = tot["standardized_measure_wan"]
+        items = [
+            ("sales_net", "本期销售油气（扣除生产成本）",
+             -sum(r["production_in_period_t"] * (r["net_revenue_usd_per_t"] - r["opex_usd_per_t_pd"]) * fx for r in rows)),
+            ("price_cost", "价格与生产成本变化",
+             sum(r["pre_tax_discounted_wan"] for r in rows) - sum(r["pre_tax_discounted_wan"] for r in at_prev_prices)),
+            ("development_incurred", "本期已发生的开发成本",
+             float(sum(float((_asset_book().get((u, as_of)) or {}).get("capex_additions_wan") or 0.0) for u in sc["unit_ids"]))),
+            ("accretion", "折现回拨（期初税前折现值 × 10%）", 0.10 * sum(r["pre_tax_discounted_wan"] for r in opening)),
+            ("income_tax", "所得税变化",
+             -(sum(r["discounted_tax_wan"] for r in rows) - sum(r["discounted_tax_wan"] for r in opening))),
+        ]
+        other = c_sm - o_sm - sum(v for _, _, v in items)
+        table = ([dict(key="opening", item=f"期初标准化计量（{prev}）", value=_r(o_sm, 1))]
+                 + [dict(key=kk, item=it, value=_r(v, 1)) for kk, it, v in items]
+                 + [dict(key="quantity_other", item="数量变化（新井、扩边、措施、修订）及其他（轧差）", value=_r(other, 1)),
+                    dict(key="closing", item=f"期末标准化计量（{as_of}）", value=_r(c_sm, 1))])
+        changes = dict(from_as_of=prev, to_as_of=as_of, table=table, balanced=True,
+                       note="价格与生产成本变化 = 期末数量分别按期末、期初价格册估值的税前折现值之差；数量变化及其他为轧差，"
+                            "包含新井、扩边、措施、技术修订、开发计划与投产时点变化的合计影响")
+    rnd = lambda r: {kk: (_r(v, 1) if isinstance(v, float) else v) for kk, v in r.items() if kk != "annual"}
+    return dict(**_env(trace_id), scope=_scope_out(sc), as_of=as_of, price_deck_id=deck, currency="万元",
+                summary=dict({kk: _r(v, 1) for kk, v in tot.items()}, life_years=years, n_units=len(rows)),
+                units=[dict(rnd(r), unit_name=names[r["unit_id"]]) for r in rows],
+                annual=annual, changes=changes,
+                assumptions=dict(discount_rate=finance.SM_DISCOUNT_RATE, income_tax_rate=float(fin.get("income_tax_rate", 0.25)),
+                                 fx_cny_per_usd=float(fin["fx_cny_per_usd"]), price_basis="SEC 价（12 个月首日价格未加权平均）",
+                                 restart_cost_wan=float(fin["restart_cost_wan"])),
+                method=["未来现金流入 = 证实储量逐年产量 × SEC 价吨油净收入；数量为 PDP + PDNP + PUD",
+                        "已开发部分（PDP + PDNP）：单元级指数剖面，初始月产取近 3 个月月均（与减值测试同一剖面），生产成本按吨油成本",
+                        "未开发部分（PUD）：逐个已入账井位按类型曲线 × 合理确定性系数截到经济极限（与 PUD 取值同一计算），从计划钻井月起投产，"
+                        "钻完井投资记在投产前一个月，投产后按单井月操作成本计生产成本",
+                        "未来开发成本 = PUD 钻完井投资 + PDNP 复产作业费；所得税 = 税率 × 正的年度税前现金流",
+                        "按 10% 年率年中折现（ASC 932 规定的折现率）"],
+                note="简化口径：所得税不考虑税基、亏损结转与抵扣，不含弃置费；税率与汇率为配置假设。标准化计量不是公允价值。")
+
+
+def _hindcast_error_model() -> Dict:
+    """单井剩余可采的误差分布：取主合成数据集递减回测（eval-dca）里"真实剩余 / 预测剩余"的对数比，按拟合历史长短分两档。"""
+    f = path("artifacts_dir") / "eval_dca_rows.csv"
+    if not f.exists():
+        raise KernelError("缺少递减回测明细（data/artifacts/eval_dca_rows.csv），请先运行 python -m src.cli eval-dca —— 误差分布从回测估计")
+    hd = pd.read_csv(f)
+    out: Dict = {}
+    for H in (12, 24):
+        d = hd[(hd["H"] == H) & hd["eur_true"].notna()]
+        rt, rp = d["eur_true"] - d["cum_to_t"], d["arps_eur"] - d["cum_to_t"]
+        ok = (rt > 0) & (rp > 0)
+        lr = np.log((rt[ok] / rp[ok]).to_numpy(float))
+        if len(lr) < 20:
+            raise KernelError(f"递减回测里峰后 {H} 个月的有效样本只有 {len(lr)} 口，不足以估计误差分布")
+        out[H] = dict(errors=lr, blocks=d["block"][ok].to_numpy(), n=int(len(lr)), median=float(np.median(lr)),
+                      p10=float(np.percentile(lr, 10)), p90=float(np.percentile(lr, 90)))
+    out["icc"] = sec_prob.icc_oneway(out[24]["errors"], out[24]["blocks"])
+    return out
+
+
+@cached_service
+def unit_probabilistic_reserves(scope: str, as_of: str = "2026-12-31", n_sims: int = 4000,
+                                trace_id: Optional[str] = None) -> Dict:
+    """老井基础剩余可采的概率汇总：逐井误差取回测经验分布，同区块井按单因子 Copula 相关，对相关系数做敏感性。
+
+    只汇总"逐井动态法"这部分（误差模型经过回测检验的部分）；新井、措施、PDNP、PUD 仍按确定性取值，不在此汇总。"""
+    sc = _scope(scope)
+    as_of, deck = _as_of(as_of)
+    em = _hindcast_error_model()
+    block_of = dict(zip(_tables()["master"]["well_id"], _tables()["master"]["block"]))
+    wells = []
+    for u in sc["unit_ids"]:
+        ev = _evaluate(u, as_of, deck, "sec")
+        for w in ev["old_base"]["wells"]:
+            if w["status"] == "ok" and w.get("fit"):
+                wells.append(dict(unit_id=u, block=block_of.get(w["well_id"], "?"), best=float(w["remaining_best_t"]),
+                                  low=float(w["remaining_low_t"]), bucket=24 if int(w["fit"]["n_fit_months"]) >= 18 else 12))
+    if not wells:
+        raise KernelError("评估对象里没有可做逐井动态法的老井")
+    errors = {12: em[12]["errors"], 24: em[24]["errors"]}
+    icc = em["icc"]
+    rhos = sorted({0.0, 0.5, 1.0} | ({round(icc["icc"], 3)} if icc["n_groups"] >= 5 else set()))   # 组太少时估计值不进敏感性
+    arr = lambda key: [w[key] for w in wells]
+    results = [sec_prob.aggregate(arr("best"), arr("block"), arr("bucket"), errors, rho=r, n_sims=int(n_sims), seed=7) for r in rhos]
+    rho_ref = 0.5 if icc["n_groups"] < 5 else round(icc["icc"], 3)
+    per_unit = []
+    for u in sc["unit_ids"]:
+        sub = [w for w in wells if w["unit_id"] == u]
+        if sub:
+            a = sec_prob.aggregate([w["best"] for w in sub], [w["block"] for w in sub], [w["bucket"] for w in sub], errors,
+                                   rho=rho_ref, n_sims=int(n_sims), seed=7)
+            per_unit.append(dict(unit_id=u, sum_low_booked_t=_r(sum(w["low"] for w in sub), 1),
+                                 **{k: _r(v, 1) if isinstance(v, float) else v for k, v in a.items()}))
+    rnd = lambda d: {k: (_r(v, 3 if k == "rho" else 1) if isinstance(v, float) else v) for k, v in d.items()}
+    return dict(**_env(trace_id), scope=_scope_out(sc), as_of=as_of, n_wells=len(wells),
+                deterministic=dict(sum_best_t=_r(sum(arr("best")), 1), sum_low_booked_t=_r(sum(arr("low")), 1),
+                                   n_short_fit_tail=sum(1 for w in wells if w["bucket"] == 12),
+                                   short_fit_tail_rule="逐井拟合尾段不足 18 个月的井用峰后 12 个月档的误差分布，其余用 24 个月档"),
+                error_model={str(H): dict(n=em[H]["n"], median_log_ratio=_r(em[H]["median"], 4), p10_log_ratio=_r(em[H]["p10"], 4),
+                                          p90_log_ratio=_r(em[H]["p90"], 4)) for H in (12, 24)},
+                correlation=dict(icc_estimate=_r(icc["icc"], 4), n_groups=icc["n_groups"], rho_reference=rho_ref,
+                                 note=("组数不足 5 个，组内相关的估计不可靠，参考值取 0.5 并对 0 ~ 1 做敏感性" if icc["n_groups"] < 5
+                                       else "参考值取回测误差的组内相关估计")),
+                results=[rnd(r) for r in results], units=per_unit,
+                method=["单井误差 = 递减回测（主合成数据集，经验 Arps）中真实剩余可采 / 预测剩余可采的对数比，按拟合历史 ≥ 18 个月与否分两档，直接用经验分布抽样",
+                        "同一区块的井共享一个高斯因子（单因子 Copula），相关系数 ρ 做敏感性：ρ = 1 时区块内完全同步、区块之间仍独立；"
+                        "\"逐井 10% 分位之和\"是所有井完全同步的极端参照",
+                        "只汇总老井逐井动态法部分；新井、措施增储、PDNP、PUD 仍为确定性取值"],
+                note="误差分布来自合成数据回测，且回测拟合方法（经验 Arps 择优）与单元评估的逐井拟合不完全相同 —— 属近似；"
+                     "SEC 已证实储量仍按确定性低值报告，本表用于说明逐井低值相加的保守程度。")
 
 
 def persist_unit_evaluation(as_of: str, scenarios=SCENARIOS) -> Dict:

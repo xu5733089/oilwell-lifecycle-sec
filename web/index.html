@@ -1430,9 +1430,10 @@ function beeswarm(host, g, opts = {}) {
 /* 区间对比：每行一个模型的 P10–P90 区间 + P50 点，竖虚线为实际值 */
 function intervalChart(host, rows, opts = {}) {
   mount(host, W => {
-    const rowH = 36, labelW = W < 480 ? 96 : 124, padR = 20, top = 22, h = rows.length * rowH + top + 26;
-    const svg = s_('svg', { viewBox: `0 0 ${W} ${h}`, width: W, height: h, role: 'img', 'aria-label': '模型区间对比' });
-    const vals = rows.flatMap(r => [r.lo, r.hi]).concat(opts.actual != null ? [opts.actual] : []).filter(Number.isFinite);
+    const refs = (opts.refs || []).filter(r => Number.isFinite(r.x));
+    const rowH = 36, labelW = W < 480 ? 96 : (opts.labelW || 124), padR = 20, top = 22 + refs.length * 13, h = rows.length * rowH + top + 26;
+    const svg = s_('svg', { viewBox: `0 0 ${W} ${h}`, width: W, height: h, role: 'img', 'aria-label': opts.aria || '区间对比' });
+    const vals = rows.flatMap(r => [r.lo, r.hi]).concat(opts.actual != null ? [opts.actual] : [], refs.map(r => r.x)).filter(Number.isFinite);
     let lo = Math.min(...vals), hi = Math.max(...vals);
     const pd = (hi - lo) * .08 || Math.abs(hi) * .1 || 1;
     lo -= pd; hi += pd;
@@ -1462,6 +1463,11 @@ function intervalChart(host, rows, opts = {}) {
       svg.appendChild(s_('line', { class: 'a-fade', style: '--d:700ms', x1: x, x2: x, y1: top - 8, y2: h - 22, stroke: cssVar('--ink'), 'stroke-width': 1.5, 'stroke-dasharray': '4 3' }));
       svg.appendChild(svgText({ class: 'a-fade', style: '--d:760ms', x, y: top - 11, 'text-anchor': 'middle', fill: cssVar('--ink'), 'font-size': FS.note, 'font-weight': 600 }, `实际 ${fmt(opts.actual, opts.digits ?? 2)}`));
     }
+    refs.forEach((r, k) => {
+      const x = X(r.x), y = 12 + k * 13, right = x > W * 0.62;
+      svg.appendChild(s_('line', { class: 'a-fade', style: `--d:${800 + k * 80}ms`, x1: x, x2: x, y1: y + 3, y2: h - 22, stroke: cssVar('--muted'), 'stroke-width': 1.2, 'stroke-dasharray': '3 3' }));
+      svg.appendChild(svgText({ class: 'a-fade', style: `--d:${820 + k * 80}ms`, x: right ? x - 4 : x + 4, y, 'text-anchor': right ? 'end' : 'start', fill: cssVar('--ink-2'), 'font-size': FS.note }, `${r.label} ${compactT(r.x)}`));
+    });
     host.appendChild(svg);
   });
 }
@@ -2863,12 +2869,13 @@ async function renderCategories() {
   host.replaceChildren(loading('评估中… 停产井逐井续算、部署井位逐个判定连续性、五年规则与经济性'));
   const dates = S.units.evaluation_dates, idx = dates.indexOf(S.asOf);
   const noPrev = { _error: `${S.asOf} 是首个评估基准日，没有上期结果可滚动` };
-  const [cat, track, disc] = await Promise.all([
+  const [cat, track, disc, prob] = await Promise.all([
     softApi('/unit/categories', { scope: S.scope, as_of: S.asOf, scenario: S.scenario }),
     idx > 0 ? softApi('/unit/category-tracking', { scope: S.scope, from_as_of: dates[idx - 1], to_as_of: S.asOf, scenario: S.scenario })
       : Promise.resolve(noPrev),
     idx > 0 ? softApi('/unit/pud-disclosure', { scope: S.scope, from_as_of: dates[idx - 1], to_as_of: S.asOf, scenario: S.scenario })
-      : Promise.resolve(noPrev)]);
+      : Promise.resolve(noPrev),
+    softApi('/unit/probabilistic', { scope: S.scope, as_of: S.asOf })]);
   await ensureBase().catch(() => null);
   if (token !== S.tok.categories) return;
   if (cat._error) { show(host, alertBar('crit', '类别评估失败', cat._error)); return; }
@@ -2995,11 +3002,37 @@ async function renderCategories() {
         el('dd', { text: f.value == null ? '—' : `${fmt(f.value, 1)}${f.unit ? ' ' + f.unit : ''}` })])))]))));
   }
 
+  /* 老井基础剩余可采的概率汇总：相关系数敏感性 + 确定性参照线 */
+  let probPanel;
+  if (prob._error) probPanel = panel('老井基础剩余可采 · 概率汇总', { meta: '不可得' }, emptyState(prob._error));
+  else {
+    const pfig = el('div'), refRho = prob.correlation.rho_reference;
+    const rhoCn = r => r === 0 ? 'ρ = 0（独立）' : r === 1 ? 'ρ = 1（区块内同步）' : `ρ = ${fmt(r, 2)}`;
+    intervalChart(pfig, prob.results.map(r => ({ label: rhoCn(r.rho), lo: r.p10_t, mid: r.p50_t, hi: r.p90_t,
+      color: r.rho === refRho ? cssVar('--c1') : cssVar('--neutral-2'), strong: r.rho === refRho })),
+    { unit: 't', digits: 0, labelW: 140, aria: '概率汇总区间', refs: [{ x: prob.deterministic.sum_low_booked_t, label: '在账逐井低值之和' },
+      { x: prob.results[0].sum_well_p10_t, label: '逐井 10% 分位之和' }, { x: prob.deterministic.sum_best_t, label: '最佳估计之和' }] });
+    const ref = prob.results.find(r => r.rho === refRho) || prob.results[0];
+    probPanel = panel('老井基础剩余可采 · 概率汇总', {
+      meta: `${prob.n_wells} 口老井 · 蒙特卡洛 ${ref.n_sims} 次 · 参考 ρ = ${fmt(refRho, 2)}`,
+      note: prob.method.concat([prob.correlation.note + '。', prob.note]),
+      table: table([{ h: '单元', k: 'unit_id' }, { h: '井数', k: 'n_wells', num: true, d: 0 }, { h: '在账低值之和 (t)', k: 'sum_low_booked_t', num: true, d: 0 },
+        { h: '概率汇总 P10 (t)', k: 'p10_t', num: true, d: 0 }, { h: 'P50 (t)', k: 'p50_t', num: true, d: 0 }, { h: 'P90 (t)', k: 'p90_t', num: true, d: 0 },
+        { h: '逐井 10% 分位之和 (t)', k: 'sum_well_p10_t', num: true, d: 0 }, { h: '汇总增益 (%)', k: 'aggregation_gain_pct', num: true, d: 1 }], prob.units, { scroll: true })
+    }, [legend([{ name: '参考相关系数下的 P10–P90', color: cssVar('--c1'), kind: 'box' }, { name: '其他相关系数', color: cssVar('--neutral-2'), kind: 'box' },
+      { name: '确定性参照线', kind: 'dash' }]),
+    el('figure', {}, pfig),
+    kv([['在账（逐井低值之和）', fmtT(prob.deterministic.sum_low_booked_t)], ['参考 ρ 下的 P10（90% 把握）', fmtT(ref.p10_t)],
+      ['比逐井 10% 分位之和高', `${fmtT(ref.aggregation_gain_t)}（${fmt(ref.aggregation_gain_pct, 1)}%）`],
+      ['误差样本（回测）', `峰后 12 个月 ${prob.error_model['12'].n} 口 · 24 个月 ${prob.error_model['24'].n} 口`]])]);
+  }
+
   show(host, strip,
     cat.warnings.length ? alertBar('warn', `五年规则预警 ${cat.warnings.length} 条`,
       cat.warnings.slice(0, 3).map(w => w.text).join('；') + (cat.warnings.length > 3 ? '；其余见部署井位清单' : '')) : null,
     el('div', { class: 'row c2' }, [unitPanel, rollPanel]),
     el('div', { class: 'row' }, discPanel),
+    el('div', { class: 'row' }, probPanel),
     el('div', { class: 'row c2' }, [mapPanel, pdnpPanel]),
     el('div', { class: 'row' }, locPanel));
 }
@@ -3015,7 +3048,8 @@ async function renderDepletion() {
   if (token !== S.tok.depletion || S.page !== 'depletion') return;
   setCtx('depletion', unitCtx({ date: true }, renderDepletion));
   host.replaceChildren(loading('计算中… 折耗按 SEC 价证实已开发储量，减值测试另按减值测试价重新评估'));
-  const d = await softApi('/unit/depletion', { scope: S.scope, as_of: S.asOf });
+  const [d, smd] = await Promise.all([softApi('/unit/depletion', { scope: S.scope, as_of: S.asOf }),
+    softApi('/unit/standardized-measure', { scope: S.scope, as_of: S.asOf })]);
   if (token !== S.tok.depletion) return;
   if (d._error) { show(host, alertBar('crit', '折耗与减值不可得', d._error)); return; }
   const s = d.summary, a = d.assumptions;
@@ -3070,7 +3104,51 @@ async function renderDepletion() {
       { h: '可收回金额', k: 'recoverable_wan', num: true, d: 0 },
       { h: '减值额', k: 'impairment_wan', num: true, render: r => r.impaired ? tag(fmt(r.impairment_wan, 0), 'crit') : '—' },
       { h: '期末净值', k: 'closing_nbv_wan', num: true, d: 0 }], d.units, { scroll: true }));
-  show(host, strip, el('div', { class: 'row c21' }, [flowPanel, methodPanel]), el('div', { class: 'row c12' }, [headPanel, detail]));
+  /* ── ASC 932 标准化计量：构成瀑布 + 两期变动瀑布 ── */
+  let smRow;
+  if (smd._error) smRow = el('div', { class: 'row' }, panel('标准化计量（ASC 932）', { meta: '不可得' }, emptyState(smd._error)));
+  else {
+    const m = smd.summary, asm = smd.assumptions, cw = v => Math.abs(v) >= 1e4 ? fmt(v / 1e4, 1) + '亿' : fmt(v, 0);
+    const g1 = cssVar('--c1'), n1 = cssVar('--neutral'), n2 = cssVar('--neutral-2');
+    const smFlow = [
+      { key: 'in', item: '未来现金流入', label: '现金流入', tiny: '流入', value: m.future_cash_inflows_wan, total: true, color: g1 },
+      { key: 'prod', item: '未来生产成本', label: '生产成本', tiny: '生产', value: -m.future_production_costs_wan, color: n2 },
+      { key: 'dev', item: '未来开发成本', label: '开发成本', tiny: '开发', value: -m.future_development_costs_wan, color: n2 },
+      { key: 'tax', item: '未来所得税', label: '所得税', tiny: '税', value: -m.future_income_tax_wan, color: n2 },
+      { key: 'net', item: '未折现净现金流', label: '未折现', tiny: '未折现', value: m.future_net_cash_flows_wan, total: true, color: n1 },
+      { key: 'disc', item: '10% 年折现', label: '10% 折现', tiny: '折现', value: -m.discount_wan, color: n2 },
+      { key: 'sm', item: '标准化计量', label: '标准化计量', tiny: '计量', value: m.standardized_measure_wan, total: true, color: g1 }];
+    const smPlot = el('div');
+    waterfall(smPlot, smFlow, { unit: '万元', totalLabel: '金额', compact: cw });
+    const cell = (label, v) => el('div', { class: 'kpi' }, [el('div', { class: 'kl', text: label }),
+      el('div', { class: 'kval' }, [String(v.value), v.unit ? el('small', { text: v.unit }) : null])]);
+    const smPanel = panel('标准化计量（ASC 932）', {
+      meta: `${smd.scope.name} · ${smd.as_of} · SEC 价 · 单位 万元`,
+      note: smd.method.concat([smd.note]),
+      table: table([{ h: '项目', k: 'item' }, { h: '金额 (万元)', k: 'value', num: true, d: 1 }], smFlow)
+    }, [el('div', { class: 'kpis inset' }, [cell('标准化计量', wanU(m.standardized_measure_wan)), cell('未折现净现金流', wanU(m.future_net_cash_flows_wan)),
+        cell('对应证实储量', tU(m.volume_t)), cell('99.5% 产出年限', { value: fmt(m.life_years, 0), unit: '年' })]),
+      legend([{ name: '流入 / 标准化计量', color: g1, kind: 'box' }, { name: '成本、所得税与折现', color: n2, kind: 'box' }, { name: '未折现净现金流', color: n1, kind: 'box' }]),
+      el('figure', {}, smPlot),
+      el('div', { class: 'kn', text: `假设：所得税率 ${fmt(asm.income_tax_rate * 100, 0)}% · 折现率 ${fmt(asm.discount_rate * 100, 0)}% · 汇率 ${asm.fx_cny_per_usd} 元/美元 · ${asm.price_basis}` })]);
+    let chPanel;
+    if (!smd.changes) chPanel = panel('标准化计量变动', { meta: '不可得' }, emptyState(`${smd.as_of} 是首个评估基准日，没有上期可比`));
+    else {
+      const CC = { opening: n1, closing: n1, sales_net: n2, price_cost: cssVar('--c2'), development_incurred: g1, accretion: g1, income_tax: n2, quantity_other: cssVar('--c3') };
+      const TINY = { opening: '期初', sales_net: '销售', price_cost: '价格', development_incurred: '开发', accretion: '回拨', income_tax: '所得税', quantity_other: '数量', closing: '期末' };
+      const chRows = smd.changes.table.map(r => ({ ...r, label: TINY[r.key], tiny: TINY[r.key], total: r.key === 'opening' || r.key === 'closing', color: CC[r.key] || n2 }));
+      const chPlot = el('div');
+      waterfall(chPlot, chRows, { unit: '万元', totalLabel: '标准化计量', compact: cw });
+      chPanel = panel('标准化计量变动', {
+        meta: `${smd.changes.from_as_of} → ${smd.changes.to_as_of} · 按构造闭合 · 单位 万元`, note: smd.changes.note + '。',
+        table: table([{ h: '行项', k: 'item' }, { h: '金额 (万元)', k: 'value', num: true, d: 1 }], smd.changes.table)
+      }, [legend([{ name: '期初 / 期末', color: n1, kind: 'box' }, { name: '价格与成本', color: cssVar('--c2'), kind: 'box' },
+        { name: '开发投入与折现回拨', color: g1, kind: 'box' }, { name: '数量变化及其他', color: cssVar('--c3'), kind: 'box' }, { name: '销售与所得税', color: n2, kind: 'box' }]),
+        el('figure', {}, chPlot)]);
+    }
+    smRow = el('div', { class: 'row c2' }, [smPanel, chPanel]);
+  }
+  show(host, strip, el('div', { class: 'row c21' }, [flowPanel, methodPanel]), el('div', { class: 'row c12' }, [headPanel, detail]), smRow);
 }
 
 /* ── 系统 · 数据导入 ── */

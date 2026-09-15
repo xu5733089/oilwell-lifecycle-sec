@@ -89,6 +89,7 @@ sec_unit:
     measure_cost_wan: {frac: 90, perforation: 20, acid: 15, workover: 35, sand_control: 25, waterflood: 10, default: 30}
     restart_cost_wan: 15       # 停产井复产作业费：PDNP 剩余可采的净收入须覆盖它
     pud_capex_wan: 500         # 部署井位未给投资时的默认钻完井投资
+    income_tax_rate: 0.25      # 标准化计量用的所得税率（示例假设：企业所得税法定税率；正式使用由财务部门提供）
   measure_types:
     perforation: "补孔"
     frac: "压裂"
