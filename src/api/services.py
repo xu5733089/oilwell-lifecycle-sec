@@ -21,8 +21,10 @@ from ..config import config, indicators as indicator_spec, path, price_decks
 from ..features.build import align, build, encode, feature_columns
 from ..models import registry
 from ..models.analog_retrieval import _resample_curve
-from ..models.attribution import local_attribution
-from ..reserves import crosscheck, dca, volumetric, workload
+from ..models.attribution import SHAP_METHOD, local_shap
+from ..models.ensemble import blend
+from ..models.seq_model import CHANNELS, sequence_tensor
+from ..reserves import crosscheck, dca, physics_dca, volumetric, workload
 from ..sec import checklist as sec_checklist
 from ..sec import classify as sec_classify
 from ..sec import composition as sec_composition
@@ -80,7 +82,7 @@ def reset_cache() -> None:
     _well_agg.cache_clear()
     for f in (_units, _monthly, _events, _codes, _new_wells, _new_well_model_estimates, _evaluate,
               _eval_fingerprint, _locations, _producing_xy, _first_prod_map, _asset_book,
-              _unit_depletion_chain, _indicator_periods):
+              _unit_depletion_chain, _indicator_periods, _physics_library, _retriever):
         f.cache_clear()
     _FIT_CACHE.clear()
     for w in _CACHED:
@@ -162,10 +164,7 @@ def query_well(well_code: str, fields: Optional[List[str]] = None,
     return dict(**_env(trace_id), **info)
 
 
-@cached_service
-def predict_lifecycle(well_code: str, obs_days: Optional[int] = None,
-                      targets: Optional[List[str]] = None,
-                      trace_id: Optional[str] = None) -> Dict:
+def _features_for(well_code: str, obs_days: Optional[int] = None):
     b = _bundle()
     obs_days = obs_days or b["obs_days"]
     w = _resolve(well_code)
@@ -173,14 +172,31 @@ def predict_lifecycle(well_code: str, obs_days: Optional[int] = None,
     if p["day_index"].max() < obs_days:
         raise KernelError(f"井 {w['well_code_anon']} 仅有 {int(p['day_index'].max())} 天历史，"
                           f"不足观测窗 {obs_days} 天")
-
     t = _tables()
     st = t["static"][t["static"]["well_id"] == w["well_id"]]
     X = encode(build(p, _master_df(w["well_id"]), st, obs_days,
                      ref_labels=b["train_labels"], spatial_master=t["master"]))
-    X = align(X, b["feature_cols"])
+    return w, p, align(X, b["feature_cols"]), obs_days
 
-    preds = b["model"].predict(X)
+
+def _family_predictions(b: Dict, X: pd.DataFrame, p: pd.DataFrame, well_id: str, obs_days: int):
+    """线上预测 = 梯度提升 与 序列模型 按目标加权融合（权重训练时在校准集 A 半上选出）。
+    旧版模型包没有序列模型时退回纯梯度提升。"""
+    pg = b["model"].predict(X)
+    sm = b.get("seq_model")
+    if sm is None:
+        return pg, None
+    ps = sm.predict(sequence_tensor(p, [well_id], obs_days), X, index=X.index)
+    return blend(pg, ps, b.get("blend_weights", {})), dict(gbdt=pg, seq=ps)
+
+
+@cached_service
+def predict_lifecycle(well_code: str, obs_days: Optional[int] = None,
+                      targets: Optional[List[str]] = None,
+                      trace_id: Optional[str] = None) -> Dict:
+    b = _bundle()
+    w, p, X, obs_days = _features_for(well_code, obs_days)
+    preds, fam = _family_predictions(b, X, p, w["well_id"], obs_days)
     conf = b["conformal"]
     out: Dict[str, Dict] = {}
     units = dict(t_oil_break="d", t_peak="d", q_peak="t/d", p_peak="MPa", eur="t")
@@ -200,23 +216,74 @@ def predict_lifecycle(well_code: str, obs_days: Optional[int] = None,
         if floored:
             out[tgt]["floored_at"] = _r(floor)
 
+    families = None
+    if fam is not None:
+        families = {}
+        cf = b.get("conformal_family", {})
+        for tgt in out:
+            row = dict(seq_weight=_r(b.get("blend_weights", {}).get(tgt, 0.0), 2),
+                       blend=[out[tgt]["p10"], out[tgt]["p50"], out[tgt]["p90"]])
+            for name in ("gbdt", "seq"):
+                dfp = fam[name][tgt]
+                lo, hi = (cf[name].apply(tgt, dfp["p10"].to_numpy(float), dfp["p90"].to_numpy(float))
+                          if name in cf else (dfp["p10"].to_numpy(float), dfp["p90"].to_numpy(float)))
+                floor = cum if tgt == "eur" else 0.0
+                row[name] = [_r(max(float(lo[0]), floor)), _r(max(float(dfp["p50"].iloc[0]), floor)),
+                             _r(max(float(hi[0]), floor))]
+            families[tgt] = row
+
     curve = None
     if {"q_peak", "t_peak", "eur"} <= set(out):
         curve = dca.synthesize_curve(out["q_peak"]["p50"], out["t_peak"]["p50"],
                                      out["eur"]["p50"])
 
-    shap_like = []
+    top = []
     if "t_peak" in b["model"].models:
-        shap_like = local_attribution(b["model"], X.iloc[0], "t_peak", 0.5, top_k=6)
+        top = local_shap(b["model"], X.iloc[0], "t_peak", 0.5, top_k=6)["contributions"]
 
     return dict(**_env(trace_id), well_code=w["well_code_anon"], obs_days=obs_days,
-                cum_to_date_t=_r(cum), results=out, curve=curve,
-                explain=dict(attribution_target="t_peak", top_features=shap_like,
-                             method="特征消融归因（leave-one-covariate-out）",
+                cum_to_date_t=_r(cum), results=out, curve=curve, model_families=families,
+                explain=dict(attribution_target="t_peak", top_features=top,
+                             method=SHAP_METHOD + "；解释对象为梯度提升 P50 分量",
                              calibration=dict(alpha=conf.alpha,
                                               delta={k: _r(v) for k, v in conf.delta.items()},
                                               test_coverage=b.get("coverage", {}))),
                 note="P10/P50/P90 为分位数本身（p10 为数值小者）；储量口径下 P90 为低估计。")
+
+
+@cached_service
+def explain_lifecycle(well_code: str, target: str = "eur", trace_id: Optional[str] = None) -> Dict:
+    """单井可解释性明细（界面用）：各目标的 TreeSHAP 瀑布 + 序列模型的逐日积分梯度热力条。"""
+    b = _bundle()
+    w, p, X, obs_days = _features_for(well_code)
+    shap = {t: local_shap(b["model"], X.iloc[0], t, 0.5, top_k=8) for t in b["model"].models}
+    temporal = None
+    sm = b.get("seq_model")
+    if sm is not None and target in sm.targets:
+        seq = sequence_tensor(p, [w["well_id"]], obs_days)
+        ig = sm.temporal_attribution(seq[0], X.iloc[[0]], target)
+        early = p[p["day_index"] <= obs_days].sort_values("day_index")
+        temporal = dict(
+            target=target, obs_days=obs_days, seq_weight=_r(b.get("blend_weights", {}).get(target, 0.0), 2),
+            channels=list(CHANNELS),
+            matrix=[[round(float(v), 5) for v in row] for row in ig["matrix"]],
+            per_day=[round(float(v), 5) for v in ig["per_day"]],
+            per_channel={k: round(float(v), 5) for k, v in ig["per_channel"].items()},
+            delta_log=round(float(ig["delta_log"]), 5), completeness_gap=round(float(ig["completeness_gap"]), 5),
+            daily_oil=[[int(d), _r(o, 2)] for d, o in zip(early["day_index"], early["oil_t"])],
+            method="积分梯度（Integrated Gradients，32 步，基线 = 训练集平均日曲线）；贡献为对数空间，"
+                   "正值表示该日该通道把预测推高")
+    return dict(**_env(trace_id), well_code=w["well_code_anon"], shap=shap, temporal=temporal)
+
+
+@cached_service
+def model_global_shap(target: str = "eur", trace_id: Optional[str] = None) -> Dict:
+    b = _bundle()
+    g = b.get("global_shap") or {}
+    if target not in g:
+        raise KernelError(f"模型包中没有目标 {target!r} 的全局 SHAP，可选：{'、'.join(g) or '无（请重新训练）'}")
+    return dict(**_env(trace_id), target=target, targets=list(g), **g[target],
+                blend_weight_seq=_r(b.get("blend_weights", {}).get(target, 0.0), 2))
 
 
 @cached_service
@@ -239,16 +306,7 @@ def find_analog_wells(well_code: str, top_k: int = 5,
                 method="早期曲线 DTW + 静态/完井特征距离 的混合相似度")
 
 
-@cached_service
-def fit_dca(well_code: str, model: str = "auto", d_min_year: float = 0.075,
-            price_deck_id: str = DEFAULT_PRICE_DECK,
-            trace_id: Optional[str] = None) -> Dict:
-    w = _resolve(well_code)
-    p = _prod(w["well_id"])
-    on = p[(p["hours_on"] > 0) & (p["oil_t"] > 0)]
-    if len(on) < 90:
-        raise KernelError(f"井 {w['well_code_anon']} 有效生产不足 90 天，无法可靠拟合递减曲线")
-
+def _post_peak(w: pd.Series, p: pd.DataFrame, on: pd.DataFrame) -> Tuple[float, pd.DataFrame]:
     # 递减分析的前提是**已过峰**。把上升段当递减段拟合会外推出荒谬的 EUR
     # （见 scripts/_patch_dca_guard.py 的由来）。没过峰就明确拒绝，不给数。
     lab = _tables()["labels"]
@@ -269,6 +327,20 @@ def fit_dca(well_code: str, model: str = "auto", d_min_year: float = 0.075,
             f"井 {w['well_code_anon']} 峰后历史仅 {post_days} 天（有效 {len(post)} 点），"
             f"不足递减分析所需的 {MIN_POST_PEAK_DAYS} 天。储量结论需等历史积累或改用类比法。")
 
+    return t_peak, post
+
+
+@cached_service
+def fit_dca(well_code: str, model: str = "auto", d_min_year: float = 0.075,
+            price_deck_id: str = DEFAULT_PRICE_DECK,
+            trace_id: Optional[str] = None) -> Dict:
+    w = _resolve(well_code)
+    p = _prod(w["well_id"])
+    on = p[(p["hours_on"] > 0) & (p["oil_t"] > 0)]
+    if len(on) < 90:
+        raise KernelError(f"井 {w['well_code_anon']} 有效生产不足 90 天，无法可靠拟合递减曲线")
+
+    t_peak, post = _post_peak(w, p, on)
     tm = post["day_index"].to_numpy(float) / 30.4
     q = post["oil_t"].to_numpy(float)
     f = dca.fit_best(tm, q, d_min_year=d_min_year) if model == "auto" else \
@@ -301,6 +373,118 @@ def fit_dca(well_code: str, model: str = "auto", d_min_year: float = 0.075,
                                avg_12m_price_usd_bbl=econ["avg_12m_price_usd_bbl"],
                                price_deck_id=price_deck_id),
                 guard="b>1 时强制要求终端递减率，否则 Arps 积分不收敛（EUR 发散）")
+
+
+@functools.lru_cache(maxsize=1)
+def _physics_library() -> Dict[str, Dict[str, "physics_dca.PhysicsFit"]]:
+    """各区块成熟井（峰后开井日均 ≥ 24 个月）的物理约束拟合 —— 类比先验的来源。一次算好全区缓存。"""
+    t = _tables()
+    ok = (t["labels"][t["labels"]["label_quality"] == "ok"][["well_id", "t_peak"]]
+          .merge(t["master"][["well_id", "block"]], on="well_id"))
+    prod = db.read_df("SELECT well_id, day_index, oil_t, hours_on FROM prod_daily")
+    groups = dict(tuple(prod.groupby("well_id")))
+    q_econ = economics.economic_limit_rate(DEFAULT_PRICE_DECK)["q_econ"]
+    lib: Dict[str, Dict] = {}
+    for _, r in ok.iterrows():
+        g = groups.get(r["well_id"])
+        if g is None:
+            continue
+        post = g[g["day_index"] >= r["t_peak"]]
+        mo, ra = physics_dca.monthly_series(post["day_index"].to_numpy() - r["t_peak"] + 1,
+                                            post["oil_t"].to_numpy(), post["hours_on"].to_numpy())
+        if len(mo) >= 24:
+            lib.setdefault(r["block"], {})[r["well_id"]] = physics_dca.fit(mo - mo[0], ra, q_econ=q_econ, cum_to_now=0.0)
+    return lib
+
+
+@cached_service
+def dca_physics(well_code: str, price_deck_id: str = DEFAULT_PRICE_DECK,
+                trace_id: Optional[str] = None) -> Dict:
+    """带物理约束的递减复核 + 流态诊断（界面"递减诊断"用）。官方储量口径仍是 fit_dca 的经验 Arps。"""
+    pcfg = config().get("physics_dca", {})
+    w = _resolve(well_code)
+    p = _prod(w["well_id"])
+    on = p[(p["hours_on"] > 0) & (p["oil_t"] > 0)]
+    if len(on) < 90:
+        raise KernelError(f"井 {w['well_code_anon']} 有效生产不足 90 天，无法做递减诊断")
+    t_peak, post = _post_peak(w, p, on)
+    econ = economics.economic_limit_rate(price_deck_id)
+    q_econ = float(econ["q_econ"])
+    cum = float(p["oil_t"].sum())
+
+    # 经验 Arps：与 fit_dca 同一份数据、同一个择优规则
+    tm = post["day_index"].to_numpy(float) / 30.4
+    fa = dca.fit_best(tm, post["oil_t"].to_numpy(float), d_min_year=0.075)
+    t0 = float(tm.min())
+
+    # 物理约束：月度开井日均口径，自峰值起算
+    mo, ra = physics_dca.monthly_series(post["day_index"].to_numpy() - t_peak + 1,
+                                        post["oil_t"].to_numpy(), post["hours_on"].to_numpy())
+    if len(mo) < 6:
+        raise KernelError(f"井 {w['well_code_anon']} 峰后有效月份不足 6 个，物理约束递减不适用")
+    tt = mo - mo[0]
+    t_now = float(tt.max())
+    lib = _physics_library().get(w["block"], {})
+    prior = physics_dca.analog_prior([f for k, f in lib.items() if k != w["well_id"]],
+                                     int(pcfg.get("min_analogs", 5)))
+    cap = None
+    try:
+        rf = _rf_reference(w["block"])
+        ooip = estimate_reserves_volumetric(well_code)["ooip_t"]["p50"]
+        cap = float(ooip) * float(rf["high_pct"]) / 100.0 if ooip else None
+    except KernelError:
+        cap = None
+    f = physics_dca.fit(tt, ra, q_econ=q_econ, cum_to_now=cum, eur_cap_t=cap, prior=prior)
+    rem, t_econ, capped = physics_dca.remaining(f, q_econ, t_now)
+    band = physics_dca.bootstrap_remaining(tt, ra, f, q_econ=q_econ, cum_to_now=cum, prior=prior,
+                                           n_boot=int(pcfg.get("n_bootstrap", 30)))
+    arps_rem = dca.eur(fa, q_econ, t_start_month=float(tm.max() - t0))["remaining"]
+
+    # 诊断曲线：横轴统一为"投产后月份"
+    mo_all, ra_all = physics_dca.monthly_series(p["day_index"].to_numpy(), p["oil_t"].to_numpy(),
+                                                p["hours_on"].to_numpy())
+    peak_m = t_peak / 30.4
+    flow = physics_dca.flow_regime(mo_all, ra_all, t_peak_month=peak_m)
+    live = p[p["hours_on"] > 0]
+    mk = ((live["day_index"] - 1) // 30.4).astype(int)
+    agg = live.groupby(mk).agg(q=("oil_t", "mean"), whp=("whp_mpa", "mean"), n=("oil_t", "size"))
+    cum_m = p.groupby(((p["day_index"] - 1) // 30.4).astype(int))["oil_t"].sum().cumsum()
+    agg = agg[agg["n"] >= 8].join(cum_m.rename("cum"), how="left")
+    rnp = physics_dca.rnp_diagnostic(agg["cum"].to_numpy(float), agg["q"].to_numpy(float),
+                                     agg["whp"].to_numpy(float))
+
+    horizon = float(min(max(t_econ, tt.max()) + 12.0, 360.0))
+    grid = np.arange(0.0, horizon + 1e-9, 1.0)
+    arps_q = dca.rate(grid, fa)
+    phys_q = physics_dca.rate(grid, f)
+    x_arps = grid + t0                       # Arps 的时间原点是峰后首个有效日
+    x_phys = grid + peak_m + mo[0]
+
+    def curve(xs, qs):
+        keep = qs >= q_econ * 0.5
+        return [[round(float(a), 2), round(float(b), 3)] for a, b in zip(xs[keep], qs[keep])]
+
+    return dict(**_env(trace_id), well_code=w["well_code_anon"],
+                method="线性流（q∝t^-1/2，等效 b=2）→ 边界控制流（b≤1）→ 终端递减；同区块成熟井参数作先验（最大后验），"
+                       "EUR 不超过容积法 OOIP P50 × 区块采收率 90% 分位",
+                physics=dict(qi=_r(f.qi), di_per_month=_r(f.di, 4), t_elf_month=_r(f.t_elf, 2), b_bdf=_r(f.b_bdf),
+                             d_min_per_month=_r(f.d_min, 5), r2=_r(f.r2), rmse=_r(f.rmse), n_points=f.n_points,
+                             prior_weight=f.prior_weight, converged=f.converged),
+                prior=dict(source=(f"同区块 {prior['n_analogs']} 口成熟井" if prior else "宽先验（同区块成熟井不足）"),
+                           **({k: _r(v, 4) for k, v in prior.items() if k != "n_analogs"} if prior else {})),
+                eur=dict(p10=_r(cum + band["p10"]), p50=_r(cum + band["p50"]), p90=_r(cum + band["p90"]),
+                         low_estimate=_r(cum + band["low_estimate"]), unit="t", n_bootstrap=band["n_boot"]),
+                eur_point_t=_r(cum + rem), cum_to_date_t=_r(cum),
+                eur_cap_t=_r(cap), cap_binding=bool(f.cap_binding),
+                arps=dict(model=fa.model, b=_r(fa.b), di_per_month=_r(fa.di, 4), eur_point_t=_r(cum + arps_rem)),
+                eur_vs_arps_pct=_r((rem - arps_rem) / max(cum + arps_rem, 1e-9) * 100, 1),
+                economics=dict(q_econ_t_per_d=_r(q_econ), t_econ_month_after_peak=_r(t_econ, 1),
+                               t_econ_capped=capped, price_deck_id=price_deck_id),
+                flow_regime=flow, rnp=rnp,
+                chart=dict(observed=[[round(float(a), 2), round(float(b), 3)] for a, b in zip(mo_all, ra_all)],
+                           peak_month=_r(peak_m, 2), now_month=_r(float(mo_all.max()) if len(mo_all) else None, 2),
+                           arps=curve(x_arps, arps_q), physics=curve(x_phys, phys_q),
+                           t_elf_month=_r(peak_m + mo[0] + physics_dca._elf_effective(f), 2)))
 
 
 @cached_service
@@ -493,10 +677,10 @@ def eval_summary(trace_id: Optional[str] = None) -> Dict:
     """读取最近一次评测产物。没跑过就如实说没跑过，不编数字。"""
     import json as _json
     out: Dict = dict(**_env(trace_id))
-    for key, fname in (("agent", "eval_agent.json"), ("algo", "eval_algo.json")):
+    for key, fname in (("agent", "eval_agent.json"), ("algo", "eval_algo.json"), ("dca", "eval_dca.json")):
         f = path("artifacts_dir") / fname
         out[key] = _json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
-    out["hint"] = "为空表示尚未运行：python -m src.cli eval-agent / eval-algo"
+    out["hint"] = "为空表示尚未运行：python -m src.cli eval-agent / eval-algo / eval-dca"
     return out
 
 
@@ -511,6 +695,66 @@ def _r(v, nd: int = 3):
         return round(float(v), nd)
     except Exception:
         return v
+
+
+@cached_service
+def production_timeline(trace_id: Optional[str] = None) -> Dict:
+    """全油田生产动态回放：逐月、逐井的日历日均产油（t/d），以及逐月的油田合计指标。
+
+    井位图上的点大小由前端按 rate 缩放（纯视觉映射）；页面上显示的全部数字取自这里的合计数组。"""
+    mon = _monthly()
+    months = sorted(mon["ym"].unique())
+    pos = {ym: i for i, ym in enumerate(months)}
+    days_in = np.array([pd.Period(ym, "M").days_in_month for ym in months], float)
+    n = len(months)
+    field = np.zeros(n)
+    producing = np.zeros(n, int)
+    wells = []
+    for wid, g in mon.groupby("well_id"):
+        ii = g["ym"].map(pos).to_numpy(int)
+        rate = g["oil_t"].to_numpy(float) / days_in[ii]
+        field[ii] += np.nan_to_num(rate)
+        producing[ii] += (g["days_on"].to_numpy() > 0).astype(int)
+        s0, s1 = int(ii.min()), int(ii.max())
+        arr = np.full(s1 - s0 + 1, np.nan)
+        arr[ii - s0] = rate
+        wells.append(dict(well_code=_code(wid), start=s0,
+                          rate=[None if not np.isfinite(v) else round(float(v), 2) for v in arr]))
+    m = _tables()["master"]
+    fp = m["first_prod_date"].astype(str).str[:7].value_counts()
+    new = np.array([int(fp.get(ym, 0)) for ym in months])
+    vol = mon.groupby("ym")["oil_t"].sum().reindex(months).fillna(0.0).to_numpy()
+    return dict(**_env(trace_id), months=months,
+                field_rate_t_per_d=[round(float(v), 1) for v in field],
+                producing_wells=producing.tolist(), new_wells=new.tolist(),
+                cum_oil_t=[round(float(v), 0) for v in np.cumsum(vol)],
+                max_well_rate=round(float(np.nanmax([max([r for r in w["rate"] if r is not None] or [0]) for w in wells])), 2),
+                wells=wells, note="日均产油按日历天数折算（当月产油 ÷ 当月天数）")
+
+
+@functools.lru_cache(maxsize=1)
+def _retriever():
+    from ..agent.rag.retriever import Retriever
+    return Retriever()
+
+
+def standards_toc(trace_id: Optional[str] = None) -> Dict:
+    r = _retriever()
+    toc = r.toc()
+    return dict(**_env(trace_id), n=len(toc), clauses=toc,
+                edition=next((c.meta.get("source") for c in r.chunks if c.meta.get("source")), None),
+                note="英文为 eCFR 官方原文；中文标题与要点为平台整理的非官方说明，合规判断以原文为准。")
+
+
+def standards_clause(citation: str, trace_id: Optional[str] = None) -> Dict:
+    c = _retriever().get(citation)
+    if c is None:
+        raise KernelError(f"条款 {citation!r} 不在条文库中")
+    return dict(**_env(trace_id), clause=c)
+
+
+def standards_search(query: str, top_k: int = 8, trace_id: Optional[str] = None) -> Dict:
+    return dict(**_env(trace_id), query=query, results=_retriever().search(query, top_k=int(top_k)))
 
 
 # =========================================================================== #

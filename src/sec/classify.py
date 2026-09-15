@@ -24,33 +24,33 @@ def classify(well: Dict, prod_days: int, economic: bool,
 
     if prod_days > 0 and status == "producing":
         if not economic:
-            return _r(NOT_PROVED, ["当前产量已低于经济极限"], "Rule 4-10(a)(22)",
+            return _r(NOT_PROVED, ["当前产量已低于经济极限"], "Rule 4-10(a)(10)",
                       False, "产量低于经济极限，不满足『可经济开采』")
         ev = [f"有产量记录 {prod_days} 天", "status=producing", "当前产量高于经济极限"]
-        return _r(PDP, ev, "Rule 4-10(a)(6)", False,
+        return _r(PDP, ev, "Rule 4-10(a)(6)(i)", False,
                   "已完井且正在生产，属已开发已生产储量")
 
     if prod_days > 0 and status == "shut_in":
         ev = [f"有产量记录 {prod_days} 天", "status=shut_in（井筒已存在，暂未生产）"]
-        return _r(PDNP, ev, "Rule 4-10(a)(6)", True,
+        return _r(PDNP, ev, "Rule 4-10(a)(6)(i)", True,
                   "井筒已存在但当前未生产，需人工确认复产条件与时间")
 
     if status == "completed_not_producing":
         ev = ["已完井未投产（待接管线 / 层未射开）"]
-        return _r(PDNP, ev, "Rule 4-10(a)(6)", True,
+        return _r(PDNP, ev, "Rule 4-10(a)(6)(i)", True,
                   "已开发未生产，需人工确认投产计划")
 
     if status == "planned" or prod_days == 0:
         if in_five_year_plan and offset_continuity_evidence:
             ev = ["未钻井位", f"已纳入 {PUD_MAX_YEARS} 年内开发计划", "相邻已探明井存在连续性证据"]
-            return _r(PUD, ev, "Rule 4-10(a)(31)", True,
+            return _r(PUD, ev, "Rule 4-10(a)(31)(ii)", True,
                       "满足五年规则与连续性证据，可初判为已探明未开发")
         missing = []
         if not in_five_year_plan:
             missing.append(f"未确认纳入 {PUD_MAX_YEARS} 年内开发计划")
         if not offset_continuity_evidence:
             missing.append("缺少相邻已探明井的连续性证据")
-        return _r(NOT_PROVED, missing, "Rule 4-10(a)(31)", True,
+        return _r(NOT_PROVED, missing, "Rule 4-10(a)(31)(ii)", True,
                   "不满足 PUD 条件，不计入已证实储量")
 
     return _r(NOT_PROVED, [f"状态未知：{status!r}"], None, True, "状态字段缺失，需人工确认")

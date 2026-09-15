@@ -38,6 +38,11 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
   路由层的越权词表里有"导入"，智能体被问到导入会直接拒绝。
 - 证实储量类别（PDNP、PUD）与折耗减值的纯计算在 `src/sec/composition.py`（`pud_reserves`、`category_rollforward`）
   与 `src/sec/finance.py`；部署井位、资产账面、在产井坐标由 `services._category_cfg` / `_unit_depletion_chain` 准备好传入。
+- 第三阶段的纯计算：`src/models/treeshap.py`（精确 TreeSHAP）、`src/models/seq_model.py`（numpy 序列模型）、
+  `src/models/ensemble.py`（融合权重选择）、`src/reserves/physics_dca.py`（带物理约束的递减）；
+  `services.explain_lifecycle` / `model_global_shap` / `dca_physics` / `production_timeline` / `standards_*` 只供界面，
+  **不注册为智能体工具**（返回体大、以图为主；智能体的预测归因仍取 `predict_lifecycle.explain.top_features`）。
+  官方储量口径仍是经验 Arps（`fit_dca`），物理约束模型只做复核，不进 SEC 数字。
 - `src/api/services.py` 是唯一的数值出口。新增能力时先在这里加函数，再在
   `src/agent/tools.py` 注册成工具，最后在 `src/agent/plans.py` 挂进计划模板。
 - 任何 service 返回体都必须带四个追溯字段
@@ -45,6 +50,13 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
   由 `_env()` 统一注入。`tests/test_agent.py::TestServiceEnvelope` 会检查。
 
 ## 口径
+
+**线上预测 = 梯度提升与序列模型按目标融合**：权重在校准集 A 半上选、保形校准只用 B 半，两者不许用同一批井；
+权重可能是 0，不许为了"融合更好看"手工改权重。SHAP 解释的是梯度提升 P50 分量，界面与文案都要说清楚。
+
+**准则条文库是生成物**：`data/standards/*.md` 由 `python -m src.cli build-standards` 从 `data/standards/raw/`（eCFR 官方 XML）生成，
+不许手改；中文标题、要点、检索术语在 `data/standards/notes_zh.yaml`，一律标注"非官方说明"，不冒充译文。
+条款号精确到段落（`Rule 4-10(a)(31)(ii)`、`Item 1203(b)`）；规则引擎与检查清单引用的条款号必须在语料里存在。
 
 **分位数口径全仓库统一**：`p10 / p50 / p90` 就是分位数本身，`p10` 是数值小的那个。
 储量行业习惯的"P90 = 低估计"用 `low_estimate` / `high_estimate` 别名表达。
@@ -99,6 +111,9 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
 - `TestNewWellIdentification` / `TestMeasureEffect::test_realized_increment_against_truth` —— 新-老-措剥离能否还原合成真值
 - `TestReconcileAndSensitivity` —— 对账必须闭合、敏感性方向必须对
 - `TestUnitAgent` —— 单元级回答的数值一致性与条款引用
+- `TestTreeSHAP::test_matches_brute_force_shapley` —— 自研 TreeSHAP 必须与 Shapley 定义逐位一致
+- `TestSequenceModel::test_backprop_matches_numeric_gradient` —— 手写反向传播的数值梯度校验
+- `TestPhysicsDCA::test_eur_cap_is_enforced` / `TestRAG::test_official_text_and_precise_citations` —— 物理上限与条文原文
 
 ## 大模型后端
 

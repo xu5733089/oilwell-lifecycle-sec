@@ -424,6 +424,46 @@ a.btn{text-decoration:none}
 .wmap .xloc{cursor:help;transition:opacity .3s}
 .wmap .xloc:hover{stroke-width:2.8px}
 
+/* ── 生产回放 · 可解释性 · 条文阅读 ── */
+.player{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-top:10px;padding:8px 10px;border:1px solid var(--rule-soft);border-radius:6px;background:var(--surface-2);animation:drop .22s var(--ease-out)}
+.player input[type=range]{flex:1 1 180px;min-width:0;accent-color:var(--brand);height:24px}
+.player .mlab{font-size:13px;font-weight:600;min-width:62px;font-variant-numeric:tabular-nums}
+.wmap .dot{transition:fill .5s ease,opacity .35s ease,r .38s var(--ease-out)}
+.pulse-kpis .kval{transition:color .2s}
+.legend i.swatchbar{width:120px;height:8px;border-radius:4px}
+.best{font-weight:600;color:var(--ok)}
+.csearch{padding:10px 12px;border-bottom:1px solid var(--rule-soft)}
+.csearch input{width:100%}
+.clist{max-height:640px;overflow:auto;padding:4px 0}
+.clist button{display:flex;flex-direction:column;gap:1px;width:100%;text-align:left;background:none;border:0;border-left:3px solid transparent;
+  padding:6px 12px;cursor:pointer;font:inherit;color:var(--ink-2);transition:background-color .15s}
+.clist button:hover{background:var(--surface-2)}
+.clist button[aria-current="true"]{background:var(--brand-soft);border-left-color:var(--brand);color:var(--ink)}
+.clist .cc{font-size:12px}
+.clist .ct2{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clist .cm{font-size:11px;color:var(--ok)}
+.row.c-side.std{grid-template-columns:minmax(260px,340px) minmax(0,1fr)}
+@media(max-width:1180px){.row.c-side.std{grid-template-columns:minmax(0,1fr)}.clist{max-height:320px}}
+.reader{padding:2px 4px 6px;animation:fade .28s ease-out}
+.crumbs{display:flex;flex-wrap:wrap;gap:2px 4px;align-items:center;font-size:12px;color:var(--muted);margin-bottom:4px}
+.ctitle{margin:4px 0 8px;font-size:19px;font-weight:600;line-height:1.35}
+.ctitle small{display:block;font-size:13px;color:var(--muted);font-weight:400;margin-top:2px}
+.cmeta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.otext{font-family:Georgia,"Times New Roman","Songti SC",serif;font-size:15px;line-height:1.8;color:var(--ink);max-width:80ch}
+.otext p{margin:0 0 10px}
+.otext mark{background:var(--warn-bg);color:inherit;border-radius:2px;padding:0 1px}
+.znote{margin-top:14px;padding:10px 14px;border-left:3px solid var(--warn);background:var(--warn-bg);border-radius:4px;font-size:13px;line-height:1.75;max-width:80ch}
+.znote b{font-size:12px;color:var(--warn)}
+.znote p{margin:4px 0 0}
+.kids{display:flex;flex-direction:column}
+.kid{display:flex;gap:12px;align-items:baseline;text-align:left;background:none;border:0;border-bottom:1px solid var(--rule-soft);padding:8px 12px;cursor:pointer;font:inherit;color:var(--ink-2)}
+.kid:last-child{border-bottom:0}
+.kid:hover{background:var(--brand-soft);color:var(--brand-ink)}
+a.ct{text-decoration:none;display:inline-block}
+a.ct:hover{text-decoration:underline;color:var(--brand)}
+.answer a.cite{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:var(--brand-soft);color:var(--brand-ink);padding:0 4px;border-radius:3px;text-decoration:none}
+.answer a.cite:hover{text-decoration:underline}
+
 /* ── 窄屏：侧栏变为顶部横向导航 ── */
 @media(max-width:900px){
   .side{position:static;width:auto;flex-direction:column}
@@ -485,6 +525,7 @@ a.btn{text-decoration:none}
     <section class="view" id="tab-import" hidden></section>
     <section class="view" id="tab-indicators" hidden></section>
     <section class="view" id="tab-chat" hidden></section>
+    <section class="view" id="tab-standards" hidden></section>
     <section class="view" id="tab-eval" hidden></section>
   </main>
 </div>
@@ -811,7 +852,7 @@ function convexHull(points) {
 function wellMap(host, cfg) {
   const st = { mode: cfg.mode || 'block', focus: null, view: null, hi: null };
   const wells = cfg.wells.filter(w => Number.isFinite(w.x) && Number.isFinite(w.y));
-  const api = { setMode: m => { st.mode = m; }, focus: b => { st.focus = b; }, highlight: c => { st.hi = c; } };
+  const api = { setMode: m => { st.mode = m; }, focus: b => { st.focus = b; }, highlight: c => { st.hi = c; }, frame: f => { st.frame = f; } };
   host.classList.add('wmap');
   if (!wells.length) { show(host, el('div', { class: 'empty', text: '没有可显示的井位' })); return api; }
   const blocks = [...new Set(wells.map(w => w.block))].sort();
@@ -888,6 +929,7 @@ function wellMap(host, cfg) {
     const dots = wells.map((w, i) => {
       const c = s_('circle', { class: 'dot a-pop', r: 2.6 + Math.sqrt((w.cum_oil_t || 0) / cmax) * rmax,
         'stroke-width': w.is_new ? 1.4 : 1, style: `--d:${Math.round(rank[i] / wells.length * 800) + 250}ms` });
+      c._r0 = c.getAttribute('r');
       c.addEventListener('mousemove', ev => { if (!dragMoved) showTip(ev, tipHtml(w)); });
       c.addEventListener('mouseleave', hideTip);
       c.addEventListener('click', () => { if (!dragMoved && cfg.onPick) cfg.onPick(w.well_code); });
@@ -1044,10 +1086,31 @@ function wellMap(host, cfg) {
     api.setMode = m => { st.mode = m; paint(); };
     api.focus = b => { st.focus = b; paint(); animateTo(b ? fitBlock(b) : full); };
     api.highlight = c => { st.hi = c; placeMark(); };
+    /* 生产回放：一帧 = 一个月。点大小 = 当月日均产油；未投产隐藏，停产变灰；新投产的井闪一下 */
+    const idxOf = new Map(wells.map((w, i) => [w.well_code, i]));
+    function applyFrame(fresh) {
+      const fr = st.frame;
+      dots.forEach((c, i) => {
+        if (!fr) { c.setAttribute('r', c._r0); c.style.opacity = ''; return; }
+        const s = fr.state(wells[i].well_code);
+        if (s.phase === 'on') { c.setAttribute('r', (2 + Math.sqrt(Math.min(s.rate / fr.max, 1.8)) * rmax * 1.45).toFixed(2)); c.style.opacity = '1'; }
+        else if (s.phase === 'pre') { c.setAttribute('r', '0.01'); c.style.opacity = '0'; }
+        else { c.setAttribute('r', '1.8'); c.style.opacity = '.3'; }
+      });
+      if (fr && fresh && MOTION) fresh.forEach(code => {
+        const i = idxOf.get(code);
+        if (i === undefined) return;
+        const ring = s_('circle', { class: 'pulse', cx: PX(wells[i].x), cy: PY(wells[i].y), r: 5, fill: 'none', stroke: cssVar('--brand'), 'stroke-width': 2 });
+        gMark.appendChild(ring);
+        setTimeout(() => ring.remove(), 1800);
+      });
+    }
+    api.frame = (fr, fresh) => { st.frame = fr; applyFrame(fresh); };
 
     host.append(svg, controls, hint);
     render();
     paint();
+    if (st.frame) applyFrame();
   });
   return api;
 }
@@ -1229,6 +1292,340 @@ function dumbbell(host, rows, cfg) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   2b. 可解释性与诊断图表：SHAP 瀑布、蜂群、区间对比、时间归因热力条、双对数诊断、回放曲线
+   ══════════════════════════════════════════════════════════════ */
+const FEAT = f => FEATURE_CN[f] || f;
+const CHANNEL_CN = { log_oil: '日产油', on: '开井', whp_rel: '相对井口压力', water_cut: '含水', log_gor: '气油比', log_cum: '累产' };
+const lerpHex = (a, b, t) => {
+  const A = _hex(a), B = _hex(b), k = Math.max(0, Math.min(1, t));
+  return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * k)).join(',')})`;
+};
+const rampLegend = (label, lo, hi, extra) => el('div', { class: 'legend' }, [
+  el('span', { text: label }), el('span', { class: 'muted', text: lo }),
+  el('i', { class: 'swatchbar', style: `background:linear-gradient(90deg,${[0, .25, .5, .75, 1].map(rampColor).join(',')})` }),
+  el('span', { class: 'muted', text: hi }), extra ? el('span', { class: 'muted', text: extra }) : null]);
+
+/* 条款号可点：智能问答里的 [Rule 4-10(a)(24)] 直接跳到条文原文 */
+const CITE_RE = /\[((?:Rule|Item)\s[^\]]+)\]/g;
+function citeNodes(text) {
+  const out = [];
+  let last = 0;
+  for (const m of String(text || '').matchAll(CITE_RE)) {
+    out.push(text.slice(last, m.index));
+    out.push(el('a', { class: 'cite', href: '#/standards', text: m[0], title: '查看条款原文', onclick: () => { S.clause = m[1]; } }));
+    last = m.index + m[0].length;
+  }
+  out.push(String(text || '').slice(last));
+  return out.filter(x => x !== '');
+}
+
+/* SHAP 瀑布：基准值 → 逐个特征的推动 → 模型输出。TreeSHAP 可加，首尾严格闭合 */
+function shapWaterfall(host, sh, opts = {}) {
+  const d = opts.digits ?? 2, unit = opts.unit || '';
+  const rows = [{ label: '基准值（训练集平均）', kind: 'base', v: sh.expected_value }];
+  let run = sh.expected_value;
+  sh.contributions.forEach(c => { rows.push({ label: FEAT(c.feature), raw: c.value, from: run, to: run + c.contrib, d: c.contrib }); run += c.contrib; });
+  if (sh.n_rest) { rows.push({ label: `其余 ${sh.n_rest} 个特征`, from: run, to: run + sh.rest, d: sh.rest, rest: true }); run += sh.rest; }
+  rows.push({ label: '模型输出 · P50', kind: 'total', v: sh.prediction });
+  mount(host, W => {
+    const rowH = 26, labelW = W < 480 ? 112 : 172, valW = 78, top = 6, h = rows.length * rowH + top + 26;
+    const svg = s_('svg', { viewBox: `0 0 ${W} ${h}`, width: W, height: h, role: 'img', 'aria-label': 'SHAP 瀑布图' });
+    const vals = rows.flatMap(r => r.kind ? [r.v] : [r.from, r.to]);
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    const padv = (hi - lo) * .08 || Math.abs(hi) * .1 || 1;
+    lo -= padv; hi += padv;
+    const x0 = labelW, x1 = W - valW, X = v => x0 + (v - lo) / (hi - lo) * (x1 - x0);
+    niceTicks(lo, hi, Math.max(3, Math.floor((x1 - x0) / 90))).forEach(t => {
+      svg.appendChild(s_('line', { x1: X(t), x2: X(t), y1: top, y2: h - 22, stroke: cssVar('--rule-soft'), 'stroke-width': 1 }));
+      svg.appendChild(svgText({ x: X(t), y: h - 8, 'text-anchor': 'middle', fill: cssVar('--muted'), 'font-size': FS.tick }, compactT(t)));
+    });
+    const pos = cssVar('--c1'), neg = cssVar('--c2'), neu = cssVar('--neutral-2'), ink = cssVar('--ink');
+    rows.forEach((r, i) => {
+      const y = top + i * rowH, cy = y + rowH / 2;
+      if (i > 0) {
+        const p = rows[i - 1], px = X(p.kind ? p.v : p.to);
+        svg.appendChild(s_('line', { x1: px, x2: px, y1: cy - rowH + 7, y2: cy - 7, stroke: cssVar('--rule'), 'stroke-width': 1, 'stroke-dasharray': '2 2' }));
+      }
+      svg.appendChild(svgText({ x: labelW - 10, y: cy + 4, 'text-anchor': 'end', fill: r.kind ? ink : cssVar('--ink-2'), 'font-size': FS.label, 'font-weight': r.kind ? 600 : 400 }, r.label));
+      let txt;
+      if (r.kind) {
+        const x = X(r.v), c = r.kind === 'total' ? ink : neu;
+        svg.appendChild(s_('line', { class: 'a-fade', style: `--d:${i * 55}ms`, x1: x, x2: x, y1: y + 4, y2: y + rowH - 4, stroke: c, 'stroke-width': 2.5 }));
+        svg.appendChild(s_('circle', { class: 'a-pop', style: `--d:${i * 55}ms`, cx: x, cy, r: 4, fill: c, stroke: cssVar('--surface'), 'stroke-width': 1.5 }));
+        txt = fmt(r.v, d);
+      } else {
+        const a = Math.min(X(r.from), X(r.to)), bw = Math.max(Math.abs(X(r.to) - X(r.from)), 1.5), up = r.d >= 0;
+        svg.appendChild(s_('path', { class: up ? 'a-right' : 'a-left', style: `--d:${i * 55}ms`, d: barPath(a, cy - 7, bw, 14, up ? 'right' : 'left'),
+          fill: r.rest ? neu : up ? pos : neg, 'fill-opacity': r.rest ? .55 : 1 }));
+        txt = (r.d > 0 ? '+' : '') + fmt(r.d, d);
+      }
+      svg.appendChild(svgText({ x: W - 6, y: cy + 4, 'text-anchor': 'end', fill: r.kind ? ink : cssVar('--muted'), 'font-size': FS.label, class: 'num' }, txt));
+      const hit = s_('rect', { x: 0, y, width: W, height: rowH, fill: 'transparent' });
+      hit.addEventListener('mousemove', ev => showTip(ev, r.kind
+        ? `<b>${r.label}</b><div class="row"><span>数值</span><span class="mono">${fmt(r.v, d)} ${unit}</span></div>`
+        : `<b>${r.label}</b>` + (r.rest ? '' : `<div class="row"><span>该井取值</span><span class="mono">${fmt(r.raw)}</span></div>`) +
+          `<div class="row"><span>对预测的推动</span><span class="mono">${(r.d > 0 ? '+' : '') + fmt(r.d, d)} ${unit}</span></div>` +
+          `<div class="row"><span>累计到此</span><span class="mono">${fmt(r.to, d)}</span></div>`));
+      hit.addEventListener('mouseleave', hideTip);
+      svg.appendChild(hit);
+    });
+    host.appendChild(svg);
+  });
+}
+
+/* 全局 SHAP 蜂群：每个点一口井，横轴 = 贡献，颜色 = 该井的特征取值（顺序色） */
+function beeswarm(host, g, opts = {}) {
+  const feats = g.features.slice(0, opts.top || 10);
+  mount(host, W => {
+    const rowH = W < 520 ? 30 : 34, labelW = W < 480 ? 112 : 168, padR = 16, top = 6, h = feats.length * rowH + top + 28;
+    const svg = s_('svg', { viewBox: `0 0 ${W} ${h}`, width: W, height: h, role: 'img', 'aria-label': '全局 SHAP 蜂群图' });
+    const all = feats.flatMap(f => f.points.map(p => p[0]));
+    let lo = Math.min(0, ...all), hi = Math.max(0, ...all);
+    const pd = (hi - lo) * .05 || 1;
+    lo -= pd; hi += pd;
+    const X = v => labelW + (v - lo) / (hi - lo) * (W - labelW - padR);
+    niceTicks(lo, hi, Math.max(3, Math.floor((W - labelW) / 90))).forEach(t => {
+      svg.appendChild(s_('line', { x1: X(t), x2: X(t), y1: top, y2: h - 22, stroke: cssVar(Math.abs(t) < 1e-12 ? '--rule' : '--rule-soft'), 'stroke-width': 1 }));
+      svg.appendChild(svgText({ x: X(t), y: h - 8, 'text-anchor': 'middle', fill: cssVar('--muted'), 'font-size': FS.tick }, compactT(t)));
+    });
+    const neutral = cssVar('--neutral'), surf = cssVar('--surface');
+    feats.forEach((f, i) => {
+      const cy = top + i * rowH + rowH / 2, amp = rowH / 2 - 3;
+      if (i % 2) svg.appendChild(s_('rect', { x: labelW, y: cy - rowH / 2, width: W - labelW - padR, height: rowH, fill: cssVar('--surface-2'), 'fill-opacity': .6 }));
+      svg.appendChild(svgText({ x: labelW - 10, y: cy + 4, 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': FS.label }, FEAT(f.feature)));
+      const gRow = s_('g', { class: 'a-fade', style: `--d:${i * 70}ms` });
+      const pts = f.points.map(p => ({ x: X(p[0]), v: p[0], n: p[1] })).sort((a, b) => a.x - b.x);
+      const cells = new Map();
+      pts.forEach(p => {
+        const key = Math.round(p.x / 3.2), k = cells.get(key) || 0;
+        cells.set(key, k + 1);
+        p.y = cy + Math.max(-amp, Math.min(amp, (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 2.6));
+        gRow.appendChild(s_('circle', { cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: 2.3, fill: p.n == null ? neutral : rampColor(p.n), 'fill-opacity': .92, stroke: surf, 'stroke-width': .4 }));
+      });
+      svg.appendChild(gRow);
+      const hit = s_('rect', { x: 0, y: cy - rowH / 2, width: W, height: rowH, fill: 'transparent' });
+      hit.addEventListener('mousemove', ev => {
+        const xv = svgX(svg, ev, W), p = pts.reduce((a, b) => Math.abs(b.x - xv) < Math.abs(a.x - xv) ? b : a, pts[0]);
+        showTip(ev, `<b>${FEAT(f.feature)}</b><div class="row"><span>平均 |SHAP|</span><span class="mono">${fmt(f.mean_abs)}</span></div>` +
+          `<div class="row"><span>光标处一口井的贡献</span><span class="mono">${signed(p.v, 2)}</span></div>` +
+          `<div class="row"><span>该井取值位置</span><span class="mono">${p.n == null ? '缺失' : fmt(p.n * 100, 0) + '%'}</span></div>`);
+      });
+      hit.addEventListener('mouseleave', hideTip);
+      svg.appendChild(hit);
+    });
+    host.appendChild(svg);
+  });
+}
+
+/* 区间对比：每行一个模型的 P10–P90 区间 + P50 点，竖虚线为实际值 */
+function intervalChart(host, rows, opts = {}) {
+  mount(host, W => {
+    const rowH = 36, labelW = W < 480 ? 96 : 124, padR = 20, top = 22, h = rows.length * rowH + top + 26;
+    const svg = s_('svg', { viewBox: `0 0 ${W} ${h}`, width: W, height: h, role: 'img', 'aria-label': '模型区间对比' });
+    const vals = rows.flatMap(r => [r.lo, r.hi]).concat(opts.actual != null ? [opts.actual] : []).filter(Number.isFinite);
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    const pd = (hi - lo) * .08 || Math.abs(hi) * .1 || 1;
+    lo -= pd; hi += pd;
+    const X = v => labelW + (v - lo) / (hi - lo) * (W - labelW - padR);
+    niceTicks(lo, hi, Math.max(3, Math.floor((W - labelW) / 90))).forEach(t => {
+      svg.appendChild(s_('line', { x1: X(t), x2: X(t), y1: top - 6, y2: h - 22, stroke: cssVar('--rule-soft'), 'stroke-width': 1 }));
+      svg.appendChild(svgText({ x: X(t), y: h - 8, 'text-anchor': 'middle', fill: cssVar('--muted'), 'font-size': FS.tick }, compactT(t)));
+    });
+    rows.forEach((r, i) => {
+      const cy = top + i * rowH + rowH / 2;
+      svg.appendChild(svgText({ x: labelW - 10, y: cy + 4, 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': FS.label, 'font-weight': r.strong ? 600 : 400 }, r.label));
+      svg.appendChild(s_('line', { class: 'a-right', style: `--d:${i * 90}ms`, x1: X(r.lo), x2: X(r.hi), y1: cy, y2: cy, stroke: r.color, 'stroke-width': 10, 'stroke-linecap': 'round', 'stroke-opacity': .3 }));
+      [r.lo, r.hi].forEach(v => svg.appendChild(s_('line', { class: 'a-fade', style: `--d:${i * 90 + 300}ms`, x1: X(v), x2: X(v), y1: cy - 7, y2: cy + 7, stroke: r.color, 'stroke-width': 2 })));
+      svg.appendChild(s_('circle', { class: 'a-pop', style: `--d:${i * 90 + 380}ms`, cx: X(r.mid), cy, r: 5.5, fill: r.color, stroke: cssVar('--surface'), 'stroke-width': 2 }));
+      svg.appendChild(svgText({ x: X(r.mid), y: cy - 10, 'text-anchor': 'middle', fill: cssVar('--ink-2'), 'font-size': FS.note }, fmt(r.mid, opts.digits ?? 2)));
+      const hit = s_('rect', { x: 0, y: cy - rowH / 2, width: W, height: rowH, fill: 'transparent' });
+      hit.addEventListener('mousemove', ev => showTip(ev, `<b>${r.label}</b>` +
+        `<div class="row"><span>P10</span><span class="mono">${fmt(r.lo)} ${opts.unit || ''}</span></div>` +
+        `<div class="row"><span>P50</span><span class="mono">${fmt(r.mid)} ${opts.unit || ''}</span></div>` +
+        `<div class="row"><span>P90</span><span class="mono">${fmt(r.hi)} ${opts.unit || ''}</span></div>` +
+        (opts.actual != null ? `<div class="row"><span>实际</span><span class="mono">${fmt(opts.actual)}</span></div>` : '')));
+      hit.addEventListener('mouseleave', hideTip);
+      svg.appendChild(hit);
+    });
+    if (opts.actual != null) {
+      const x = X(opts.actual);
+      svg.appendChild(s_('line', { class: 'a-fade', style: '--d:700ms', x1: x, x2: x, y1: top - 8, y2: h - 22, stroke: cssVar('--ink'), 'stroke-width': 1.5, 'stroke-dasharray': '4 3' }));
+      svg.appendChild(svgText({ class: 'a-fade', style: '--d:760ms', x, y: top - 11, 'text-anchor': 'middle', fill: cssVar('--ink'), 'font-size': FS.note, 'font-weight': 600 }, `实际 ${fmt(opts.actual, opts.digits ?? 2)}`));
+    }
+    host.appendChild(svg);
+  });
+}
+
+/* 时间归因热力条：上 = 前 90 天日产油；中 = 6 个输入通道 × 逐日积分梯度（发散色）；下 = 逐日合计 */
+function heatStrip(host, t) {
+  const C = t.matrix.length, T = t.matrix[0].length;
+  const flat = t.matrix.flat().map(Math.abs).sort((a, b) => a - b);
+  const vmax = flat[Math.floor(flat.length * .98)] || flat.at(-1) || 1;
+  const oil = new Map(t.daily_oil.map(p => [p[0], p[1]]));
+  mount(host, W => {
+    const labelW = W < 480 ? 80 : 104, padR = 10, oilH = 58, cellH = W < 520 ? 14 : 17, gap = 10, sumH = 36, top = 4;
+    const heatTop = top + oilH + gap, sumTop = heatTop + C * cellH + gap, h = sumTop + sumH + 24;
+    const iw = W - labelW - padR, cw = iw / T;
+    const svg = s_('svg', { viewBox: `0 0 ${W} ${h}`, width: W, height: h, role: 'img', 'aria-label': '序列模型时间归因热力图' });
+    const surf = cssVar('--surface'), pos = cssVar('--c1'), neg = cssVar('--c2'), muted = cssVar('--muted');
+    const colorOf = v => lerpHex(surf, v >= 0 ? pos : neg, Math.pow(Math.min(1, Math.abs(v) / vmax), .75));
+    const DX = day => labelW + (day - .5) * cw;
+    const pts = t.daily_oil.filter(p => p[1] != null && p[0] <= T);
+    const omax = Math.max(...pts.map(p => p[1]), 0) || 1, OY = v => top + oilH - v / omax * (oilH - 6);
+    if (pts.length) {
+      const line = pts.map(p => `${DX(p[0]).toFixed(1)},${OY(p[1]).toFixed(1)}`).join(' L');
+      svg.appendChild(s_('path', { class: 'a-clip', d: `M${DX(pts[0][0]).toFixed(1)},${top + oilH} L${line} L${DX(pts.at(-1)[0]).toFixed(1)},${top + oilH}Z`, fill: cssVar('--c3'), 'fill-opacity': .14 }));
+      svg.appendChild(s_('path', { class: 'a-clip', d: 'M' + line, fill: 'none', stroke: cssVar('--c3'), 'stroke-width': 1.6, 'stroke-linejoin': 'round' }));
+    }
+    svg.appendChild(svgText({ x: labelW - 10, y: top + oilH / 2 + 4, 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': FS.label }, '实测曲线'));
+    svg.appendChild(svgText({ x: labelW + 4, y: top + 10, fill: muted, 'font-size': FS.note }, `最高 ${fmt(omax, 1)} t/d`));
+    t.matrix.forEach((row, c) => {
+      const y = heatTop + c * cellH;
+      svg.appendChild(svgText({ x: labelW - 10, y: y + cellH / 2 + 4, 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': FS.label }, CHANNEL_CN[t.channels[c]] || t.channels[c]));
+      row.forEach((v, d) => svg.appendChild(s_('rect', { class: 'a-fade', style: `--d:${Math.round(d * 7)}ms`, x: (labelW + d * cw).toFixed(2), y, width: Math.max(cw - .5, .6).toFixed(2), height: cellH - 1.5, fill: colorOf(v) })));
+    });
+    const smax = Math.max(...t.per_day.map(Math.abs)) || 1, mid = sumTop + sumH / 2;
+    svg.appendChild(s_('line', { x1: labelW, x2: labelW + iw, y1: mid, y2: mid, stroke: cssVar('--rule'), 'stroke-width': 1 }));
+    t.per_day.forEach((v, d) => {
+      const bh = Math.abs(v) / smax * (sumH / 2 - 1);
+      svg.appendChild(s_('rect', { class: v >= 0 ? 'a-up' : 'a-down', style: `--d:${Math.round(d * 7) + 200}ms`, x: (labelW + d * cw + .5).toFixed(2), y: v >= 0 ? mid - bh : mid,
+        width: Math.max(cw - 1, .6).toFixed(2), height: Math.max(bh, .4), fill: v >= 0 ? pos : neg }));
+    });
+    svg.appendChild(svgText({ x: labelW - 10, y: mid + 4, 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': FS.label }, '逐日合计'));
+    [1, 15, 30, 45, 60, 75, 90].filter(d => d <= T).forEach(d => svg.appendChild(
+      svgText({ x: DX(d), y: h - 8, 'text-anchor': 'middle', fill: muted, 'font-size': FS.tick }, `第 ${d} 天`)));
+    const col = s_('rect', { x: 0, y: heatTop - 3, width: Math.max(cw, 2), height: sumTop + sumH - heatTop + 3, fill: 'none', stroke: cssVar('--ink'), 'stroke-width': 1, opacity: 0, rx: 1 });
+    svg.appendChild(col);
+    const hit = s_('rect', { x: labelW, y: top, width: iw, height: sumTop + sumH - top, fill: 'transparent' });
+    hit.addEventListener('mousemove', ev => {
+      const d = Math.max(0, Math.min(T - 1, Math.floor((svgX(svg, ev, W) - labelW) / cw)));
+      col.setAttribute('x', labelW + d * cw); col.setAttribute('opacity', .6);
+      let html = `<b>投产第 ${d + 1} 天</b><div class="row"><span>日产油</span><span class="mono">${oil.has(d + 1) ? fmt(oil.get(d + 1), 2) + ' t' : '—'}</span></div>`;
+      t.matrix.forEach((row, c) => { html += `<div class="row"><span>${CHANNEL_CN[t.channels[c]] || t.channels[c]}</span><span class="mono">${signed(row[d], 4)}</span></div>`; });
+      html += `<div class="row"><span><b>当日合计</b></span><span class="mono">${signed(t.per_day[d], 4)}</span></div>`;
+      showTip(ev, html);
+    });
+    hit.addEventListener('mouseleave', () => { col.setAttribute('opacity', 0); hideTip(); });
+    svg.appendChild(hit);
+    host.appendChild(svg);
+  });
+}
+
+/* 双对数诊断：斜率参考线（线性流 −1/2 等）从首个实测点出发 */
+function logLogChart(host, cfg) {
+  mount(host, W => {
+    const pts = cfg.series.flatMap(s => s.points).filter(p => p[0] > 0 && p[1] > 0);
+    if (!pts.length) { host.appendChild(el('div', { class: 'empty', text: cfg.empty || '数据不足，无法绘制诊断图' })); return; }
+    const g = frame(W, W < 520 ? 240 : 290, { l: 54, r: 18, t: 14, b: 40 });
+    const { svg, pad, iw, ih } = g, L = Math.log10;
+    let x0 = L(Math.min(...pts.map(p => p[0]))), x1 = L(Math.max(...pts.map(p => p[0])));
+    let y0 = L(Math.min(...pts.map(p => p[1]))), y1 = L(Math.max(...pts.map(p => p[1])));
+    const px = Math.max((x1 - x0) * .05, .06), py = Math.max((y1 - y0) * .1, .06);
+    x0 -= px; x1 += px; y0 -= py; y1 += py;
+    const X = v => pad.l + (L(v) - x0) / (x1 - x0) * iw, Y = v => pad.t + ih - (L(v) - y0) / (y1 - y0) * ih;
+    const logTicks = (a, b) => {
+      const out = [], dense = b - a < 2.2;
+      for (let k = Math.floor(a); k <= Math.ceil(b); k++) [1, 2, 5].forEach(m => {
+        const v = m * Math.pow(10, k), lv = L(v);
+        if (lv >= a && lv <= b && (m === 1 || dense)) out.push(v);
+      });
+      return out;
+    };
+    const lab = v => v >= 1e4 ? compactT(v) : v >= 1 ? fmt(v, 0) : fmt(v, 3);
+    const grid = cssVar('--rule-soft'), muted = cssVar('--muted');
+    logTicks(y0, y1).forEach(v => {
+      svg.appendChild(s_('line', { x1: pad.l, x2: pad.l + iw, y1: Y(v), y2: Y(v), stroke: grid, 'stroke-width': 1 }));
+      svg.appendChild(svgText({ x: pad.l - 8, y: Y(v) + 4, 'text-anchor': 'end', fill: muted, 'font-size': FS.tick }, lab(v)));
+    });
+    logTicks(x0, x1).forEach(v => {
+      svg.appendChild(s_('line', { x1: X(v), x2: X(v), y1: pad.t, y2: pad.t + ih, stroke: grid, 'stroke-width': 1 }));
+      svg.appendChild(svgText({ x: X(v), y: pad.t + ih + 16, 'text-anchor': 'middle', fill: muted, 'font-size': FS.tick }, lab(v)));
+    });
+    svg.appendChild(s_('rect', { x: pad.l, y: pad.t, width: iw, height: ih, fill: 'none', stroke: cssVar('--rule'), 'stroke-width': 1 }));
+    if (cfg.xLabel) svg.appendChild(svgText({ x: pad.l + iw / 2, y: g.h - 4, 'text-anchor': 'middle', fill: muted, 'font-size': FS.note }, cfg.xLabel));
+    if (cfg.yLabel) svg.appendChild(svgText({ x: 12, y: pad.t + ih / 2, 'text-anchor': 'middle', fill: muted, 'font-size': FS.note, transform: `rotate(-90 12 ${pad.t + ih / 2})` }, cfg.yLabel));
+    (cfg.guides || []).forEach((gd, k) => {
+      const [ax, ay] = gd.anchor;
+      let xe = Math.pow(10, x1 - (x1 - x0) * .03);
+      const yb = Math.pow(10, gd.slope < 0 ? y0 : y1);
+      xe = Math.min(xe, ax * Math.pow(yb / ay, 1 / gd.slope));
+      if (!(xe > ax)) return;
+      const ye = ay * Math.pow(xe / ax, gd.slope);
+      svg.appendChild(s_('line', { class: 'a-fade', style: `--d:${500 + k * 120}ms`, x1: X(ax), y1: Y(ay), x2: X(xe), y2: Y(ye), stroke: cssVar('--neutral-2'), 'stroke-width': 1.3, 'stroke-dasharray': '6 4' }));
+      svg.appendChild(svgText({ class: 'a-fade', style: `--d:${600 + k * 120}ms`, x: X(xe) - 4, y: Y(ye) + (gd.slope < 0 ? -6 : 14), 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': FS.note }, gd.label));
+    });
+    cfg.series.forEach(s => {
+      const sp = s.points.filter(p => p[0] > 0 && p[1] > 0);
+      if (!sp.length) return;
+      if (s.line !== false) svg.appendChild(s_('polyline', { class: 'a-clip', points: sp.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(' '), fill: 'none', stroke: s.color, 'stroke-width': s.dots ? 1 : 2, 'stroke-opacity': s.dots ? .45 : 1 }));
+      if (s.dots) sp.forEach(p => svg.appendChild(s_('circle', { class: 'a-clip', cx: X(p[0]).toFixed(1), cy: Y(p[1]).toFixed(1), r: 3, fill: s.color, stroke: cssVar('--surface'), 'stroke-width': 1 })));
+    });
+    const main = cfg.series[0].points.filter(p => p[0] > 0 && p[1] > 0);
+    const ring = s_('circle', { r: 6, fill: 'none', stroke: cssVar('--ink'), 'stroke-width': 1.5, opacity: 0 });
+    svg.appendChild(ring);
+    const hit = s_('rect', { x: pad.l, y: pad.t, width: iw, height: ih, fill: 'transparent' });
+    hit.addEventListener('mousemove', ev => {
+      const lx = x0 + (svgX(svg, ev, W) - pad.l) / iw * (x1 - x0);
+      const p = main.reduce((a, b) => Math.abs(L(b[0]) - lx) < Math.abs(L(a[0]) - lx) ? b : a, main[0]);
+      ring.setAttribute('cx', X(p[0])); ring.setAttribute('cy', Y(p[1])); ring.setAttribute('opacity', 1);
+      showTip(ev, `<b>${cfg.series[0].name}</b><div class="row"><span>${cfg.xName || 'x'}</span><span class="mono">${fmt(p[0], 2)}</span></div>` +
+        `<div class="row"><span>${cfg.yName || 'y'}</span><span class="mono">${fmt(p[1], 4)}</span></div>`);
+    });
+    hit.addEventListener('mouseleave', () => { ring.setAttribute('opacity', 0); hideTip(); });
+    svg.appendChild(hit);
+    host.appendChild(svg);
+  });
+}
+
+/* 带播放头的面积曲线：点击 / 拖动跳到任意月份，set(i) 由回放控制器驱动 */
+function areaPlayhead(host, cfg) {
+  const st = { i: cfg.index ?? cfg.values.length - 1, ph: null };
+  const place = () => {
+    if (!st.ph) return;
+    const { X, Y, line, dot, label, pad, W } = st.ph, x = X(st.i), y = Y(cfg.values[st.i] || 0);
+    line.setAttribute('x1', x); line.setAttribute('x2', x);
+    dot.setAttribute('cx', x); dot.setAttribute('cy', y);
+    label.setAttribute('x', Math.min(Math.max(x, pad.l + 28), W - 30));
+    label.textContent = cfg.labels[st.i];
+  };
+  mount(host, W => {
+    const g = frame(W, cfg.height || 196, { l: 50, r: 14, t: 22, b: 28 });
+    const { svg, pad, iw, ih } = g, n = cfg.values.length;
+    const ymax = Math.max(...cfg.values) * 1.1 || 1;
+    const X = i => pad.l + i / Math.max(n - 1, 1) * iw, Y = v => pad.t + ih - v / ymax * ih;
+    yGrid(g, [0, ymax], Y, compactT);
+    cfg.labels.forEach((m, i) => {
+      if (!/-01$/.test(m)) return;
+      svg.appendChild(s_('line', { x1: X(i), x2: X(i), y1: pad.t + ih, y2: pad.t + ih + 4, stroke: cssVar('--rule'), 'stroke-width': 1 }));
+      svg.appendChild(svgText({ x: X(i), y: pad.t + ih + 17, 'text-anchor': 'middle', fill: cssVar('--muted'), 'font-size': FS.tick }, m.slice(0, 4)));
+    });
+    const c = cssVar('--c1'), pts = cfg.values.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' L');
+    svg.appendChild(s_('path', { class: 'a-clip', d: `M${X(0)},${pad.t + ih} L${pts} L${X(n - 1)},${pad.t + ih}Z`, fill: c, 'fill-opacity': .15 }));
+    svg.appendChild(s_('path', { class: 'a-clip', d: 'M' + pts, fill: 'none', stroke: c, 'stroke-width': 2, 'stroke-linejoin': 'round' }));
+    const line = s_('line', { y1: pad.t, y2: pad.t + ih, stroke: cssVar('--brand'), 'stroke-width': 1.5 });
+    const dot = s_('circle', { r: 4.5, fill: cssVar('--brand'), stroke: cssVar('--surface'), 'stroke-width': 2 });
+    const label = svgText({ y: pad.t - 7, 'text-anchor': 'middle', fill: cssVar('--ink'), 'font-size': FS.label, 'font-weight': 600 }, '');
+    svg.append(line, dot, label);
+    const idxAt = ev => Math.max(0, Math.min(n - 1, Math.round((svgX(svg, ev, W) - pad.l) / iw * (n - 1))));
+    const hit = s_('rect', { x: pad.l, y: pad.t, width: iw, height: ih, fill: 'transparent', style: 'cursor:pointer' });
+    let dragging = false;
+    hit.addEventListener('pointerdown', ev => { dragging = true; hit.setPointerCapture(ev.pointerId); cfg.onSeek && cfg.onSeek(idxAt(ev)); });
+    hit.addEventListener('pointerup', () => { dragging = false; });
+    hit.addEventListener('mousemove', ev => {
+      const i = idxAt(ev);
+      if (dragging && cfg.onSeek) cfg.onSeek(i);
+      showTip(ev, `<b>${cfg.labels[i]}</b><div class="row"><span>${cfg.name || ''}</span><span class="mono">${fmt(cfg.values[i], 1)} ${cfg.unit || ''}</span></div><div style="color:var(--muted);margin-top:3px">点击跳到该月</div>`);
+    });
+    hit.addEventListener('mouseleave', hideTip);
+    svg.appendChild(hit);
+    st.ph = { X, Y, line, dot, label, pad, W };
+    place();
+    host.appendChild(svg);
+  });
+  return { set: i => { st.i = i; place(); } };
+}
+
+/* ══════════════════════════════════════════════════════════════
    3. 通用片段（企业系统组件：面板、指标条、实体页头、表格、子页签）
    ══════════════════════════════════════════════════════════════ */
 const STATUS_CN = { pass: '通过', fail: '不通过', needs_human: '需人工确认' };
@@ -1273,7 +1670,10 @@ const ICON = {
   pie: '<path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>',
   coins: '<ellipse cx="9" cy="7" rx="6" ry="3"/><path d="M3 7v5c0 1.7 2.7 3 6 3s6-1.3 6-3V7"/><path d="M9 15v2c0 1.7 2.7 3 6 3s6-1.3 6-3v-5c0-1.7-2.7-3-6-3"/>',
   upload: '<path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M5 3h14"/>',
-  sliders: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>'
+  sliders: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  play: '<path d="M7 4.5l12 7.5-12 7.5z"/>',
+  pause: '<path d="M8 5v14M16 5v14"/>',
+  book: '<path d="M4 5a2 2 0 0 1 2-2h5v16H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-5v16h5a2 2 0 0 1 2 2z"/>'
 };
 const icon = name => {
   const t = document.createElement('template');
@@ -1477,7 +1877,7 @@ const ctxField = (label, ctl) => {
    ══════════════════════════════════════════════════════════════ */
 const S = { wells: [], overview: null, current: null, page: null, ovBlock: 'all', wl: { q: '', page: 0 },
   unitSub: 'comp', nwFilter: 'all', locFilter: 'all',
-  tok: { well: 0, reserves: 0, unit: 0, monitor: 0, categories: 0, depletion: 0, profiles: 0 } };
+  tok: { well: 0, reserves: 0, unit: 0, monitor: 0, categories: 0, depletion: 0, profiles: 0, standards: 0 } };
 const BLOCK_COLORS = () => ({ 'GL-A': cssVar('--c1'), 'GL-B': cssVar('--c2'), 'SB-C': cssVar('--c3') });
 const go = name => { location.hash = '#/' + name; };
 function pickWell(code) { S.current = code; }
@@ -1504,6 +1904,7 @@ async function ensureBase() {
 /* ── 总览 ── */
 async function renderOverview() {
   const host = $('#tab-overview');
+  if (S.pb) { S.pb.playing = false; clearTimeout(S.pb.timer); }
   host.replaceChildren(loading());
   await ensureBase();
   if (S.page !== 'overview') return;
@@ -1537,21 +1938,104 @@ async function renderOverview() {
       });
       return b;
     }));
+
+  /* ── 生产动态回放：逐月驱动井位图、油田曲线播放头与计数 ── */
+  const pb = S.pb = { active: false, playing: false, i: 0, speed: S.pbSpeed || 1, timer: 0, tl: null, pulse: null, byCode: null, starts: null, max: 1 };
+  const playBtn = el('button', { class: 'btn sm primary', type: 'button', 'aria-pressed': 'false', disabled: true, title: '加载生产动态…' },
+    [icon('play'), el('span', { text: '生产回放' })]);
+  const ppBtn = el('button', { class: 'btn sm', type: 'button', 'aria-label': '播放或暂停' }, icon('play'));
+  const slider = el('input', { type: 'range', min: '0', max: '0', step: '1', value: '0', 'aria-label': '回放月份' });
+  const mlab = el('span', { class: 'mlab', text: '—' });
+  const exitBtn = el('button', { class: 'btn sm', type: 'button', text: '退出回放' });
+  const player = el('div', { class: 'player', hidden: true }, [ppBtn, slider, mlab,
+    segControl([[1, '1×'], [2, '2×'], [4, '4×']], pb.speed, k => { pb.speed = S.pbSpeed = k; }, '回放速度'), exitBtn]);
+
   const mapPanel = panel('井位分布', {
-    meta: `${wells.length} 口井 · 等比例投影`, actions: [modeSeg],
+    meta: `${wells.length} 口井 · 等比例投影`, actions: [modeSeg, playBtn],
     note: ['坐标已统一偏移，不可反推真实井位；东西、南北同一比例尺。',
       '操作：拖动平移，双击放大，⌘ / Ctrl + 滚轮或触控板双指缩放，右上角按钮复位；点击区块图例聚焦该区块，点击井位进入单井分析。',
-      '新井指投产不足 420 天、尚未走完主要生产周期的井。']
-  }, [mapLegend, el('figure', {}, plot)]);
+      '新井指投产不足 420 天、尚未走完主要生产周期的井。',
+      '生产回放：逐月重放全油田生产。点的大小 = 当月日均产油，新投产的井闪一下，停产的井变灰；右侧"油田生产动态"的曲线与计数同步。']
+  }, [mapLegend, el('figure', {}, plot), player]);
+
+  const KP = [['月份', ''], ['全油田日产油', 't/d'], ['在产井', '口'], ['当月新投', '口'], ['累产油', '']];
+  const cells = KP.map(([label, unit]) => {
+    const small = el('small', { text: unit }), val = el('div', { class: 'kval' }, ['—', small]);
+    return { node: el('div', { class: 'kpi' }, [el('div', { class: 'kl', text: label }), val]), val, small };
+  });
+  const pulseFig = el('div', {}, loading('加载生产动态…', true));
+  const pulsePanel = panel('油田生产动态', {
+    meta: '全油田逐月 · 不随区块筛选',
+    note: ['日均产油 = 当月产油 ÷ 当月日历天数；在产井 = 当月有开井记录的井。',
+      '点击或拖动曲线可跳到任意月份。页面上的数字全部来自内核的逐月汇总，前端只负责播放。']
+  }, [el('div', { class: 'kpis inset pulse-kpis' }, cells.map(c => c.node)), el('figure', {}, pulseFig)]);
+
+  const setCell = (k, text, unit) => { cells[k].val.firstChild.nodeValue = text; if (unit !== undefined) cells[k].small.textContent = unit; };
+  function setMonth(i, fresh) {
+    const tl = pb.tl;
+    if (!tl) return;
+    pb.i = i; slider.value = String(i); mlab.textContent = tl.months[i];
+    setCell(0, tl.months[i]); setCell(1, fmt(tl.field_rate_t_per_d[i], 1)); setCell(2, fmt(tl.producing_wells[i], 0));
+    setCell(3, fmt(tl.new_wells[i], 0));
+    const c = tU(tl.cum_oil_t[i]);
+    setCell(4, c.value, c.unit || '');
+    if (pb.pulse) pb.pulse.set(i);
+    if (pb.active) S.mapApi.frame({ max: pb.max, state: code => {
+      const w = pb.byCode.get(code);
+      if (!w || i < w.start) return { phase: 'pre' };
+      const k = i - w.start;
+      if (k >= w.rate.length) return { phase: 'post' };
+      return w.rate[k] > 0 ? { phase: 'on', rate: w.rate[k] } : { phase: 'off' };
+    } }, fresh ? (pb.starts.get(i) || []) : null);
+  }
+  function pause() { pb.playing = false; clearTimeout(pb.timer); ppBtn.replaceChildren(icon('play')); }
+  function tick() {
+    if (!pb.playing) return;
+    if (S.page !== 'overview' || !host.isConnected || pb.i >= pb.tl.months.length - 1) { pause(); return; }
+    setMonth(pb.i + 1, true);
+    pb.timer = setTimeout(tick, 460 / pb.speed);
+  }
+  function enter() { pb.active = true; player.hidden = false; playBtn.setAttribute('aria-pressed', 'true'); }
+  function play() {
+    if (!pb.tl) return;
+    if (!pb.active) enter();
+    if (pb.i >= pb.tl.months.length - 1) setMonth(0, false);
+    pb.playing = true; ppBtn.replaceChildren(icon('pause'));
+    clearTimeout(pb.timer); pb.timer = setTimeout(tick, 240);
+  }
+  function exit() {
+    pause(); pb.active = false; player.hidden = true; playBtn.setAttribute('aria-pressed', 'false');
+    S.mapApi.frame(null); setMonth(pb.tl.months.length - 1, false);
+  }
+  playBtn.addEventListener('click', () => { if (pb.active) exit(); else { enter(); setMonth(0, false); if (MOTION) play(); } });
+  ppBtn.addEventListener('click', () => (pb.playing ? pause() : play()));
+  exitBtn.addEventListener('click', exit);
+  slider.addEventListener('input', () => { pause(); if (!pb.active) enter(); setMonth(+slider.value, false); });
+
+  S.tlP = S.tlP || api('/timeline').catch(e => { S.tlP = null; throw e; });
+  S.tlP.then(tl => {
+    if (S.pb !== pb || !host.isConnected) return;
+    pb.tl = tl;
+    pb.byCode = new Map(tl.wells.map(w => [w.well_code, w]));
+    pb.starts = new Map();
+    tl.wells.forEach(w => { if (!pb.starts.has(w.start)) pb.starts.set(w.start, []); pb.starts.get(w.start).push(w.well_code); });
+    const rates = tl.wells.flatMap(w => w.rate.filter(v => v > 0)).sort((a, b) => a - b);
+    pb.max = rates[Math.floor(rates.length * .95)] || tl.max_well_rate || 1;     /* 仅用于点的大小映射 */
+    slider.max = String(tl.months.length - 1);
+    pb.pulse = areaPlayhead(pulseFig, { labels: tl.months, values: tl.field_rate_t_per_d, unit: 't/d', name: '全油田日产油',
+      onSeek: i => { pause(); if (!pb.active) enter(); setMonth(i, false); } });
+    playBtn.disabled = false; playBtn.removeAttribute('title');
+    setMonth(tl.months.length - 1, false);
+  }).catch(e => { pulseFig.replaceChildren(emptyState('生产动态不可得：' + e.message)); });
 
   const rep = ov.report || {};
   const bt = Object.entries(rep).map(([k, r]) => ({
     target: TARGET_CN[k] || k, mae: r.model.mae, base: r.baseline.mae,
     gain: r.mae_gain_vs_baseline_pct, cov: r.model.coverage, cov0: r.model_uncalibrated.coverage }));
   const btPanel = panel('预测模型回测', {
-    meta: `测试集 ${ov.model.n_test} 口老井`, flush: true,
-    note: ['回测集为已走完主要生产周期的老井；基线 = 邻井类比 + Arps 外推。',
-      '"校准前"一列是保形校准的价值：名义 80% 的区间，校准前实际只覆盖四到五成。']
+    meta: `测试集 ${ov.model.n_test} 口老井 · ${ov.model.backend}`, flush: true,
+    note: ['回测集为已走完主要生产周期的老井；基线 = 邻井类比 + Arps 外推。模型 = 梯度提升与序列模型按目标融合。',
+      '"校准前"一列是保形校准的价值：名义 80% 的区间，校准前实际只覆盖四到六成。']
   }, table([{ h: '目标', k: 'target' }, { h: '模型 MAE', k: 'mae', num: true }, { h: '基线 MAE', k: 'base', num: true },
     { h: '较基线', k: 'gain', num: true, render: r => tag(`${r.gain > 0 ? '↓' : ''}${fmt(Math.abs(r.gain ?? 0), 1)}%`, (r.gain ?? 0) > 0 ? 'ok' : 'crit') },
     { h: '覆盖率', k: 'cov', num: true }, { h: '校准前', k: 'cov0', num: true }], bt));
@@ -1561,9 +2045,57 @@ async function renderOverview() {
     meta: `${ov.quality.n_passed} / ${ov.quality.n_wells} 通过 · 未通过的进隔离区，不进训练集`, flush: true
   }, qRows.length ? table([{ h: '未通过原因（前 5）', k: 'reason' }, { h: '井数', k: 'n', num: true, d: 0 }], qRows) : emptyState('全部通过'));
 
+  /* ── 全局 SHAP 蜂群 ── */
+  const tOpts = Object.keys(rep).filter(k => TARGET_CN[k]).map(k => [k, TARGET_CN[k]]);
+  if (!S.gsTarget || !rep[S.gsTarget]) S.gsTarget = rep.eur ? 'eur' : (tOpts[0] || ['eur'])[0];
+  const gsBody = el('div', {}, loading('计算全局 SHAP…', true));
+  let gsReq = 0;
+  async function loadGS(k) {
+    const my = ++gsReq;
+    gsBody.replaceChildren(loading('计算全局 SHAP…', true));
+    try {
+      S.gs = S.gs || {};
+      const g = S.gs[k] || (S.gs[k] = await api('/model/global-shap', { target: k }));
+      if (my !== gsReq) return;
+      const fig = el('div');
+      beeswarm(fig, g);
+      gsBody.replaceChildren(rampLegend('特征取值', '低', '高', '灰色 = 缺失'), el('figure', {}, fig),
+        el('div', { class: 'kn', text: `每个点是一口井 · 基准值 ${fmt(g.expected_value)} · 样本 ${g.n} 口 · 按平均 |SHAP| 取前 ${Math.min(10, g.features.length)} 个特征` }));
+    } catch (e) { if (my === gsReq) gsBody.replaceChildren(emptyState(e.message)); }
+  }
+  const gsPanel = panel('全局特征归因 · SHAP 蜂群图', {
+    meta: '梯度提升 P50 分量',
+    actions: [segControl(tOpts.length ? tOpts : [['eur', 'EUR']], S.gsTarget, k => { S.gsTarget = k; loadGS(k); }, '预测目标')],
+    note: ['精确 TreeSHAP（自研，与穷举 Shapley 逐位对拍）：每口井的 基准值 + 各特征贡献 = 模型输出。',
+      '横轴是该特征对预测的推动（目标单位），颜色是该井的特征取值（5%–95% 分位间由浅到深）。颜色沿横轴单调渐变，说明模型学到的是单调关系。']
+  }, gsBody);
+
+  /* ── 模型族对比 ── */
+  const famRows = Object.entries(rep).filter(([, r]) => r.families && r.families.blend)
+    .map(([k, r]) => ({ target: TARGET_CN[k] || k, f: r.families, w: r.seq_weight }));
+  const bestOf = f => Math.min(...['gbdt', 'seq', 'blend'].map(n => (f[n] ? f[n].mae : Infinity)));
+  const maeCell = (r, n) => {
+    const x = r.f[n];
+    if (!x) return '—';
+    const best = x.mae === bestOf(r.f);
+    return el('span', { class: best ? 'best' : null, text: fmt(x.mae) + (best ? ' ✓' : '') });
+  };
+  const famPanel = panel('模型族对比', {
+    meta: '测试集 · 各自保形校准 · ✓ = 该目标 MAE 最低', flush: true,
+    note: ['梯度提升读前 90 天的统计特征；序列模型（纯 numpy 膨胀卷积 TCN，手写反向传播）直接读逐日曲线。',
+      '融合权重在校准集 A 半上按分位数损失从 {0, 0.25, 0.5, 0.75, 1} 中选出，B 半做保形校准 —— 权重可能选到 0，融合不预设"一定更好"。']
+  }, famRows.length ? table([{ h: '目标', k: 'target' },
+    { h: '梯度提升 MAE', k: 'g', num: true, render: r => maeCell(r, 'gbdt') },
+    { h: '序列模型 MAE', k: 's', num: true, render: r => maeCell(r, 'seq') },
+    { h: '融合 MAE', k: 'b', num: true, render: r => maeCell(r, 'blend') },
+    { h: '融合覆盖率', k: 'c', num: true, render: r => fmt(r.f.blend.coverage, 2) },
+    { h: '序列权重', k: 'w', num: true, render: r => fmt(r.w, 2) }], famRows) : emptyState('当前模型包没有序列模型，重新训练后可见'));
+
   show(host, strip,
-    el('div', { class: 'row c21' }, [mapPanel, el('div', { class: 'stack' }, [btPanel, qPanel])]),
+    el('div', { class: 'row c21' }, [mapPanel, el('div', { class: 'stack' }, [pulsePanel, btPanel, qPanel])]),
+    el('div', { class: 'row c2' }, [gsPanel, famPanel]),
     el('div', { class: 'row' }, wellListPanel(wells)));
+  loadGS(S.gsTarget);
 }
 
 function wellListPanel(wells) {
@@ -1668,11 +2200,74 @@ async function renderWell() {
     { name: 'P10–P90 区间', color: c1, kind: 'band' }, dca0 ? { name: '经济极限', kind: 'dash' } : null].filter(Boolean)),
   el('figure', {}, plot)]);
 
-  const attrHost = el('div');
-  divergingBars(attrHost, pred.explain.top_features.map(f => ({ label: FEATURE_CN[f.feature] || f.feature, value: f.contrib, raw: f.value })), 'd');
-  const attrPanel = panel('特征归因 · 达峰时间', {
-    meta: '条形 = 该特征把预测推高 / 拉低的天数', note: pred.explain.method + '：把该特征换成训练集中位数，看预测怎么变。'
-  }, el('figure', {}, attrHost));
+  /* ── 可解释性：SHAP 瀑布（目标切换）· 模型族区间 · 序列模型时间归因 ── */
+  const tOpts = Object.keys(pr).map(k => [k, TARGET_CN[k] || k]);
+  if (!S.xTarget || !pr[S.xTarget]) S.xTarget = pr.eur ? 'eur' : tOpts[0][0];
+  const shapBody = el('div', {}, loading('计算 SHAP…', true));
+  const tempBody = el('div', {}, loading('计算积分梯度…', true));
+  const famBody = el('div');
+  const shapMeta = el('span'), famMeta = el('span'), tempMeta = el('span');
+  const shapPanel = panel('单井特征归因 · SHAP 瀑布', {
+    meta: shapMeta,
+    actions: [segControl(tOpts, S.xTarget, k => { S.xTarget = k; drawFam(); loadExplain(); }, '解释目标')],
+    note: ['精确 TreeSHAP（路径依赖口径）：从训练集平均预测出发，逐个特征把预测推高或拉低，最后恰好落在该井的模型输出上。',
+      '解释对象是梯度提升的 P50 分量；线上 P50 是它与序列模型的融合值，序列模型的依据见下方"时间归因"。']
+  }, shapBody);
+  const famPanel = panel('模型族区间对比', {
+    meta: famMeta,
+    note: ['三行分别是梯度提升、序列模型、融合（线上口径）的 P10–P90 区间与 P50，均经过各自的保形校准。',
+      '有可信实际标签的老井会画出实际值竖线，可直观看到哪个模型更贴近。']
+  }, famBody);
+  const tempPanel = panel('序列模型时间归因 · 前 90 天', {
+    meta: tempMeta,
+    note: ['积分梯度（Integrated Gradients）：把输入从"训练集平均日曲线"逐步变到该井的实际曲线，累计每一天、每个通道对预测的贡献。',
+      '青色格子把预测推高，橙色拉低，颜色越深贡献越大；贡献在对数空间，逐日合计之和 ≈ 该井与平均曲线预测值的对数差。']
+  }, tempBody);
+
+  function drawFam() {
+    const t = S.xTarget, f = pred.model_families && pred.model_families[t];
+    shapMeta.textContent = `${TARGET_CN[t] || t} · 单位 ${pr[t].unit}`;
+    famMeta.textContent = `${TARGET_CN[t] || t}` + (f ? ` · 序列模型融合权重 ${fmt(f.seq_weight, 2)}` : '');
+    if (!f) { famBody.replaceChildren(emptyState('当前模型包没有序列模型（旧版本），重新训练后可见')); return; }
+    const fig = el('div');
+    intervalChart(fig, [
+      { label: '梯度提升', lo: f.gbdt[0], mid: f.gbdt[1], hi: f.gbdt[2], color: cssVar('--c3') },
+      { label: '序列模型', lo: f.seq[0], mid: f.seq[1], hi: f.seq[2], color: cssVar('--c4') },
+      { label: '融合（线上）', lo: f.blend[0], mid: f.blend[1], hi: f.blend[2], color: cssVar('--c1'), strong: true }],
+    { actual: act && act[t] != null ? act[t] : null, unit: pr[t].unit, digits: t === 'eur' ? 0 : 2 });
+    famBody.replaceChildren(el('figure', {}, fig));
+  }
+
+  let xReq = 0;
+  async function loadExplain() {
+    const t = S.xTarget, my = ++xReq;
+    shapBody.replaceChildren(loading('计算 SHAP…', true));
+    tempBody.replaceChildren(loading('计算积分梯度…', true));
+    let ex;
+    try { ex = await api('/explain/lifecycle', { well_code: S.current, target: t }); } catch (e) {
+      if (my === xReq) { shapBody.replaceChildren(emptyState(e.message)); tempBody.replaceChildren(emptyState(e.message)); }
+      return;
+    }
+    if (my !== xReq || token !== S.tok.well) return;
+    const sh = ex.shap[t];
+    if (sh) {
+      const fig = el('div');
+      shapWaterfall(fig, sh, { unit: pr[t].unit, digits: t === 'eur' ? 0 : 2 });
+      shapBody.replaceChildren(legend([{ name: '推高预测', color: c1, kind: 'box' }, { name: '拉低预测', color: c2, kind: 'box' },
+        { name: '其余特征合计', color: cssVar('--neutral-2'), kind: 'box' }]), el('figure', {}, fig),
+      el('div', { class: 'kn', text: `基准值 ${fmt(sh.expected_value)} + 各特征贡献 = ${fmt(sh.prediction)} ${pr[t].unit}（可加性误差 ${sh.additivity_gap}）` }));
+    } else shapBody.replaceChildren(emptyState('该目标没有 SHAP 解释'));
+    const tm = ex.temporal;
+    tempMeta.textContent = tm ? `${TARGET_CN[tm.target] || tm.target} · 序列模型融合权重 ${fmt(tm.seq_weight, 2)}` : '';
+    if (!tm) { tempBody.replaceChildren(emptyState('当前模型包没有序列模型，重新训练后可见')); return; }
+    const fig = el('div');
+    heatStrip(fig, tm);
+    const ch = Object.entries(tm.per_channel).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+    tempBody.replaceChildren(legend([{ name: '推高预测', color: c1, kind: 'box' }, { name: '拉低预测', color: c2, kind: 'box' },
+      { name: '日产油', color: cssVar('--c3') }]), el('figure', {}, fig),
+    el('div', { class: 'kn', text: `各通道合计（对数空间，按绝对值排序）：${ch.map(([k, v]) => `${CHANNEL_CN[k] || k} ${signed(v, 3)}`).join('　')}　·　完备性误差 ${tm.completeness_gap}` }));
+  }
+
   const anPanel = panel('类比井', { meta: `相似度前 ${analogs.analogs.length}`, note: analogs.method, flush: true },
     table([{ h: '井号', k: 'well_code' }, { h: '相似度', k: 'similarity', num: true },
       { h: '实际达峰 (d)', k: 't_peak_actual', num: true, d: 0 }, { h: '峰值 (t/d)', k: 'q_peak_actual', num: true },
@@ -1681,7 +2276,10 @@ async function renderWell() {
   const warn = !act && curve.actual ? alertBar('info', '暂无可信实际标签',
     `质量位 ${curve.actual.label_quality || '—'}：峰后下降尚未持续足够长时间，不展示"实际达峰"，避免把还没到的峰当成真值。`) : null;
   show(host, ...[wellHead(info), warn, strip, curvePanel,
-    el('div', { class: 'row c2' }, [attrPanel, anPanel])].filter(Boolean));
+    el('div', { class: 'row c2' }, [shapPanel, el('div', { class: 'stack' }, [famPanel, anPanel])]),
+    el('div', { class: 'row' }, tempPanel)].filter(Boolean));
+  drawFam();
+  loadExplain();
 }
 
 /* ── 储量与 SEC 预评估 ── */
@@ -1760,12 +2358,93 @@ async function renderReserves() {
     }, el('ul', { class: 'chk' }, sec.checklist.map(i => el('li', {}, [
       el('span', {}, tag(STATUS_CN[i.status], STATUS_CLS[i.status])),
       el('div', {}, [el('div', { class: 'it', text: i.item }), el('div', { class: 'ev', text: '依据：' + i.evidence }),
-        i.citation ? el('div', { class: 'ct mono', text: i.citation }) : null])]))));
+        i.citation ? el('a', { class: 'ct mono', href: '#/standards', text: i.citation + ' ↗', title: '查看条款原文', onclick: () => { S.clause = i.citation; } }) : null])]))));
+
+  /* ── 递减诊断：经验 Arps vs 带物理约束的递减模型（异步加载，不阻塞主体） ── */
+  const diagBody = el('div', {}, loading('拟合带物理约束的递减模型…', true));
+  const physBody = el('div', {}, loading('', true));
+  const diagSeg = el('div');
+  const diagRow = dca._error ? null : el('div', { class: 'row c21' }, [
+    panel('递减诊断 · 经验 Arps vs 物理约束', {
+      actions: [diagSeg],
+      note: ['产量对比：月度开井日均产量（点）与两条外推曲线。物理约束模型在"线性流结束"处由 q∝t^-1/2 转入 b≤1 的边界控制流，最终进入终端递减。',
+        '流态诊断：产量–时间双对数图。线性流的斜率约 −1/2，斜率明显变陡说明已进入边界控制流 —— 此时继续沿用早期的大 b 值外推会高估 EUR。',
+        '规整化压力：RNP =（初始压力 − 井口压力）/ 产量，对物质平衡时间 MBT = 累产 / 产量。线性流斜率约 1/2，边界控制流约 1。井口压力代替井底流压，只看形态，不做定量试井解释。']
+    }, diagBody),
+    panel('物理约束递减复核', {
+      flush: true,
+      note: ['官方储量口径仍是左侧"递减曲线分析"的经验 Arps；本面板是独立复核。',
+        '回测（python -m src.cli eval-dca）：峰后只有 6 个月历史时，物理约束模型的 EUR 高估超 20% 的井占比约为经验 Arps 的一半；历史长了两者相当。']
+    }, physBody)]);
+
+  async function loadPhysics() {
+    let ph;
+    try { ph = await api('/reserves/dca-physics', { well_code: S.current }); } catch (e) {
+      if (token === S.tok.reserves) { diagBody.replaceChildren(emptyState(e.message)); physBody.replaceChildren(emptyState(e.message)); }
+      return;
+    }
+    if (token !== S.tok.reserves) return;
+    const ch = ph.chart, P = a => a.map(p => ({ x: p[0], y: p[1] }));
+    const draw = k => {
+      S.diagMode = k;
+      const fig = el('div');
+      if (k === 'rate') {
+        const phys = P(ch.physics);
+        const near = x => phys.reduce((a, b) => Math.abs(b.x - x) < Math.abs(a.x - x) ? b : a, phys[0] || { y: 0 });
+        lineChart(fig, {
+          xLabel: '投产后月份', yLabel: '开井日均产油 t/d',
+          series: [{ name: '实测（月度）', color: cssVar('--neutral-2'), points: P(ch.observed), dots: ch.observed.length < 70 },
+            { name: '经验 Arps', color: cssVar('--c2'), points: P(ch.arps), dashed: true },
+            { name: '物理约束', color: cssVar('--c1'), points: phys }],
+          hline: { y: ph.economics.q_econ_t_per_d, label: `经济极限 ${ph.economics.q_econ_t_per_d} t/d` },
+          vline: ch.now_month != null ? { x: ch.now_month, label: '← 实测 / 外推 →' } : null,
+          markers: ch.t_elf_month != null && ph.physics.t_elf_month > 0.3 && phys.length
+            ? [{ x: ch.t_elf_month, y: near(ch.t_elf_month).y, color: cssVar('--c1'), label: `线性流结束 · 峰后 ${fmt(ph.physics.t_elf_month, 1)} 月` }] : []
+        });
+        diagBody.replaceChildren(legend([{ name: '实测（月度开井日均）', color: cssVar('--neutral-2'), kind: 'dot' },
+          { name: '经验 Arps', color: cssVar('--c2'), kind: 'dash' }, { name: '物理约束（LF → BDF → 终端）', color: cssVar('--c1') },
+          { name: '经济极限', kind: 'dash' }]), el('figure', {}, fig));
+      } else if (k === 'flow') {
+        const fr = ph.flow_regime, a = fr.points[0];
+        logLogChart(fig, { xLabel: '投产后月份（对数）', yLabel: '日产油 t/d（对数）', xName: '月份', yName: '日产油',
+          series: [{ name: '实测', color: cssVar('--c3'), points: fr.points, dots: true }],
+          guides: a ? [{ slope: -0.5, label: '斜率 −1/2（线性流）', anchor: a }, { slope: -1, label: '斜率 −1', anchor: a }] : [] });
+        diagBody.replaceChildren(el('figure', {}, fig), kv([['当前流态', fr.regime_now],
+          ['早期 / 晚期双对数斜率', `${fr.early_slope ?? '—'} / ${fr.late_slope ?? '—'}`],
+          ['诊断出的线性流结束', fr.t_elf_month != null ? `投产后第 ${fmt(fr.t_elf_month, 1)} 个月` : '未识别到明显转折']]));
+      } else {
+        const r = ph.rnp, a = r.points[0];
+        logLogChart(fig, { xLabel: '物质平衡时间 MBT = 累产 / 产量（对数）', yLabel: 'RNP（对数）', xName: 'MBT', yName: 'RNP',
+          empty: '压力数据不足，无法绘制规整化压力诊断',
+          series: [{ name: '实测', color: cssVar('--c3'), points: r.points, dots: true, line: false }],
+          guides: a ? [{ slope: 0.5, label: '斜率 1/2（线性流）', anchor: a }, { slope: 1, label: '斜率 1（边界控制流）', anchor: a }] : [] });
+        diagBody.replaceChildren(el('figure', {}, fig), kv([['后半段斜率', r.slope ?? '—'], ['估算初始压力', r.p_init != null ? r.p_init + ' MPa（早期最高井口压力 × 1.05）' : '—']]));
+      }
+    };
+    diagSeg.replaceChildren(segControl([['rate', '产量对比'], ['flow', '流态诊断'], ['rnp', '规整化压力']], S.diagMode || 'rate', draw, '诊断视图'));
+    draw(S.diagMode || 'rate');
+    const f = ph.physics, e = ph.eur;
+    physBody.replaceChildren(el('div', { style: 'padding:4px 16px' }, kv([
+      ['模型', '线性流 → 边界控制流 → 终端递减'],
+      ['线性流结束 t_elf', `峰后 ${fmt(f.t_elf_month, 1)} 个月`],
+      ['边界控制流 b', `${f.b_bdf}（物理上限 1）`],
+      ['线性流段 Di', `${f.di_per_month} /月 · 终端递减 ${f.d_min_per_month} /月`],
+      ['拟合 R² · 先验占比', `${f.r2} · ${fmt(f.prior_weight * 100, 0)}%`],
+      ['先验来源', ph.prior.source],
+      ['EUR 区间', `P10 ${fmtT(e.p10)} · P50 ${fmtT(e.p50)} · P90 ${fmtT(e.p90)}`],
+      ['与经验 Arps', el('span', {}, [`Arps（${ph.arps.model}，b=${ph.arps.b}）${fmtT(ph.arps.eur_point_t)}；物理约束 ${fmtT(ph.eur_point_t)}　`,
+        delta(ph.eur_vs_arps_pct, 1, '%')])],
+      ['EUR 上限', ph.eur_cap_t != null ? el('span', {}, [`${fmtT(ph.eur_cap_t)}（OOIP P50 × 区块采收率 90% 分位）　`,
+        ph.cap_binding ? tag('已触发', 'warn') : tag('未触发')]) : '不可得（缺静态参数）'],
+      ['不确定性', e.n_bootstrap ? `${e.n_bootstrap} 次移动块自助法（每次重拟合都带同样的约束与先验）`
+        : '峰后有效月份不足 12 个，未做自助法；区间为剩余可采量 ±40% 的经验带，仅作示意']])));
+  }
 
   show(host, ...[wellHead(info),
     dca._error ? alertBar('warn', '递减分析不适用', `${dca._error}。递减分析要求已过峰，把上升段当递减段拟合会外推出荒谬的 EUR；该井储量区间请参考"全生命周期预测"中的 EUR。`) : null,
     strip,
-    el('div', { class: 'row c2' }, [el('div', { class: 'stack' }, [dcaPanel, ccPanel, volPanel]), secPanel])].filter(Boolean));
+    el('div', { class: 'row c2' }, [el('div', { class: 'stack' }, [dcaPanel, ccPanel, volPanel]), secPanel]), diagRow].filter(Boolean));
+  if (diagRow) loadPhysics();
 }
 
 /* ── SEC 单元：共用 ── */
@@ -2711,7 +3390,7 @@ function renderChat() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q })
       });
       const a = await r.json();
-      answer.className = 'answer'; answer.textContent = a.answer;
+      answer.className = 'answer'; answer.replaceChildren(...citeNodes(a.answer));
       const g = a.guard || {};
       meta.replaceChildren(...[
         tag(g.ok ? `数值一致性通过 · ${g.numbers_checked} 个数字` : `数值一致性未通过 · ${(g.violations || []).length} 处`, g.ok ? 'ok' : 'crit'),
@@ -2737,6 +3416,107 @@ function renderChat() {
 }
 
 /* ── 模型评测 ── */
+/* ── 准则条文：eCFR 官方原文，条款号精确到段落 ── */
+async function renderStandards() {
+  const host = $('#tab-standards'), token = ++S.tok.standards;
+  const hm = location.hash.match(/[?&]c=([^&]+)/);
+  if (hm) S.clause = decodeURIComponent(hm[1]);
+  if (!S.clause) S.clause = 'Rule 4-10(a)(22)';
+  host.replaceChildren(loading('加载条文库…'));
+  try { S.toc = S.toc || await api('/standards/toc'); } catch (e) {
+    if (token === S.tok.standards) show(host, alertBar('crit', '条文库不可得', e.message + '。请运行 python -m src.cli build-standards'));
+    return;
+  }
+  if (token !== S.tok.standards || S.page !== 'standards') return;
+  const toc = S.toc.clauses;
+  setCtx('standards', [tag(S.toc.edition || 'eCFR'), tag(`${S.toc.n} 段条款`)]);
+
+  const q = el('input', { type: 'text', placeholder: '检索：中文或英文，如 五年规则、合理确定性、first-day-of-the-month', 'aria-label': '检索条款', value: S.stdQ || '' });
+  const list = el('div', { class: 'clist', role: 'list' });
+  const reader = el('div', { class: 'reader' });
+  const listMeta = el('span');
+  let hits = null, timer = 0, req = 0;
+
+  function drawList() {
+    const reg = S.stdReg || 'all';
+    const items = hits ? hits : toc.filter(c => reg === 'all' || c.regulation === reg);
+    listMeta.textContent = hits ? `命中 ${hits.length} 段（按相关度）` : `${items.length} 段`;
+    list.replaceChildren(...items.map(c => {
+      const b = el('button', { type: 'button', role: 'listitem', 'aria-current': String(c.citation === S.clause),
+        style: hits ? null : `padding-left:${12 + Math.min(c.level || 0, 5) * 12}px` }, [
+        el('span', { class: 'cc mono', text: c.citation }),
+        el('span', { class: 'ct2', text: c.zh_title ? `${c.zh_title} · ${c.title}` : c.title }),
+        hits && c.match === 'citation' ? el('span', { class: 'cm', text: '条款号精确命中' }) : null]);
+      b.addEventListener('click', () => openClause(c.citation));
+      return b;
+    }));
+    const cur = list.querySelector('[aria-current="true"]');
+    if (cur && !hits) cur.scrollIntoView({ block: 'nearest' });
+  }
+
+  async function openClause(c) {
+    S.clause = c;
+    list.querySelectorAll('button').forEach(b => b.setAttribute('aria-current', String(b.firstChild.textContent === c)));
+    const my = ++req;
+    reader.replaceChildren(loading('', true));
+    let r;
+    try { r = await api('/standards/clause', { citation: c }); } catch (e) { if (my === req) reader.replaceChildren(emptyState(e.message)); return; }
+    if (my !== req || token !== S.tok.standards) return;
+    const k = r.clause;
+    const copy = el('button', { class: 'btn sm', type: 'button', text: '复制引用' });
+    copy.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(`[${k.citation}]（${k.cfr}）`); toast('已复制条款引用'); } catch (_) { toast('浏览器不允许写剪贴板', 'crit'); }
+    });
+    const terms = (S.stdQ || '').match(/[A-Za-z][A-Za-z\-]{3,}/g) || [];
+    const para = text => {
+      if (!terms.length) return el('p', { text });
+      const re = new RegExp(`(${terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+      return el('p', {}, text.split(re).map((s, i) => (i % 2 ? el('mark', { text: s }) : s)).filter(x => x !== ''));
+    };
+    reader.replaceChildren(...[
+      el('nav', { class: 'crumbs', 'aria-label': '上级条款' }, [...k.ancestors.flatMap(a => [
+        el('button', { type: 'button', class: 'ibtn mono', text: a.citation, title: a.title, onclick: () => openClause(a.citation) }), el('span', { text: '›' })]),
+      el('span', { class: 'mono', text: k.citation })]),
+      el('h2', { class: 'ctitle' }, [k.title, k.zh_title ? el('small', { text: k.zh_title }) : null]),
+      el('div', { class: 'cmeta' }, [tag(k.cfr, 'brand'), k.regulation ? tag(k.regulation) : null, k.edition ? tag(k.edition) : null,
+        k.kind === 'instruction' ? tag('指令（Instruction）', 'warn') : null, copy]),
+      el('div', { class: 'otext', lang: 'en' }, k.text.split(/\n\n+/).map(para)),
+      k.note_zh ? el('div', { class: 'znote' }, [el('b', { text: '要点（非官方中文说明）' }), el('p', { text: k.note_zh })]) : null,
+      k.children.length ? box(`下级条款 · ${k.children.length}`, el('div', { class: 'kids' }, k.children.map(ch =>
+        el('button', { type: 'button', class: 'kid', onclick: () => openClause(ch.citation) }, [el('span', { class: 'mono', text: ch.citation }), el('span', { text: ch.title })])))) : null].filter(Boolean));
+    history.replaceState(null, '', '#/standards?c=' + encodeURIComponent(c));
+  }
+
+  q.addEventListener('input', () => {
+    S.stdQ = q.value;
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const v = q.value.trim();
+      if (!v) { hits = null; drawList(); return; }
+      try {
+        const r = await api('/standards/search', { query: v, top_k: 12 });
+        if (q.value.trim() !== v || token !== S.tok.standards) return;
+        hits = r.results; drawList();
+      } catch (e) { listMeta.textContent = e.message; }
+    }, 260);
+  });
+
+  const regSeg = segControl([['all', '全部'], ['Regulation S-X', 'Rule 4-10'], ['Regulation S-K', 'Items 1201–1208']], S.stdReg || 'all',
+    k => { S.stdReg = k; hits = null; q.value = ''; S.stdQ = ''; drawList(); }, '法规');
+  const tocPanel = panel('条款目录', {
+    meta: listMeta, actions: [regSeg], flush: true,
+    note: ['17 CFR 210.4-10（Regulation S-X Rule 4-10，油气储量定义与会计）与 17 CFR 229.1201–1208（Regulation S-K Items 1201–1208，油气披露）。',
+      '检索用 BM25 + TF-IDF 混合、RRF 融合；中文检索词经术语表扩展到原文关键词，直接输入条款号（如 4-10(a)(31)(ii)、Item 1203）精确命中。']
+  }, [el('div', { class: 'csearch' }, q), list]);
+  const readPanel = panel('条款原文', {
+    meta: '英文为官方原文 · 中文要点为非官方说明',
+    note: [S.toc.note, '智能问答与 SEC 满足性检查里出现的条款号都可以点开，跳转到这里核对原文。']
+  }, reader);
+  show(host, el('div', { class: 'row c-side std' }, [tocPanel, readPanel]));
+  if (S.stdQ) q.dispatchEvent(new Event('input')); else drawList();
+  openClause(S.clause);
+}
+
 async function renderEval() {
   const host = $('#tab-eval');
   host.replaceChildren(loading());
@@ -2787,6 +3567,19 @@ async function renderEval() {
       table([{ h: '目标', k: 'target' }, { h: 'MAE', k: 'mae', num: true }, { h: '覆盖率', k: 'coverage', num: true },
         { h: '相对基线 (%)', k: 'gain_pct', num: true, d: 1 }], rows))));
   }
+  if (e.dca) {
+    const rows = e.dca.horizons.flatMap(H => [{ _group: `峰后只用前 ${H} 个月历史拟合` },
+      ...e.dca.table.filter(r => r.horizon_months === H).map(r => ({ m: r.method_cn, n: r.n_wells, next: r.next12.mdape_pct,
+        eur: r.eur ? r.eur.mdape_pct : null, bias: r.eur ? r.eur.bias_pct : null, over: r.eur ? r.eur.over20_pct : null,
+        p90: r.eur ? r.eur.p90_pct : null, cap: r.cap_binding_pct }))]);
+    out.push(el('div', { class: 'row' }, panel('算法层 · 递减模型回测', {
+      meta: `类比井库 ${e.dca.n_library} 口 · 回测井与类比井按投产时间交错分开`, flush: true,
+      note: [e.dca.conclusion, '"高估 > 20%" 是 SEC 口径最关心的一列：已证实储量宁低勿高。']
+    }, table([{ h: '方法', k: 'm' }, { h: '井数', k: 'n', num: true, d: 0 }, { h: '未来 12 月产量误差 (%)', k: 'next', num: true, d: 1 },
+      { h: 'EUR 中位误差 (%)', k: 'eur', num: true, d: 1 }, { h: 'EUR 中位偏差 (%)', k: 'bias', num: true, d: 1 },
+      { h: '高估 > 20% 的井 (%)', k: 'over', num: true, d: 1 }, { h: 'EUR 误差 90% 分位 (%)', k: 'p90', num: true, d: 1 },
+      { h: '上限触发 (%)', k: 'cap', num: true, d: 1 }], rows))));
+  } else out.push(alertBar('info', '尚未运行递减模型回测', 'python -m src.cli eval-dca'));
   show(host, ...out);
 }
 
@@ -2802,6 +3595,7 @@ const PAGES = {
   depletion: { group: 'SEC 单元', title: '折耗与减值', icon: 'coins', render: renderDepletion },
   monitor: { group: 'SEC 单元', title: '运行监控', icon: 'bars', render: renderMonitor },
   chat: { group: '智能分析', title: '智能问答', icon: 'chat', render: renderChat },
+  standards: { group: '智能分析', title: '准则条文', icon: 'book', render: renderStandards },
   import: { group: '系统', title: '数据导入', icon: 'upload', render: renderImport },
   indicators: { group: '系统', title: '指标口径', icon: 'sliders', render: renderProfiles },
   eval: { group: '系统', title: '模型评测', icon: 'check', render: renderEval }
@@ -2819,6 +3613,7 @@ function switchTab(name) {
   if (!PAGES[name]) name = 'overview';
   const p = PAGES[name];
   S.page = name; hideTip();
+  if (S.pb) { S.pb.playing = false; clearTimeout(S.pb.timer); }
   document.querySelectorAll('#nav a').forEach(a => {
     if (a.dataset.page === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
@@ -2827,7 +3622,7 @@ function switchTab(name) {
   $('#ptitle').textContent = p.title;
   document.title = `${p.title} · 储量评估系统`;
   $('#ctx').replaceChildren();
-  if (location.hash !== '#/' + name) history.replaceState(null, '', '#/' + name);
+  if (location.hash.split('?')[0] !== '#/' + name) history.replaceState(null, '', '#/' + name);
   Promise.resolve(p.render()).catch(e => {
     if (S.page === name) $('#tab-' + name).replaceChildren(alertBar('crit', '加载失败', e.message));
   });

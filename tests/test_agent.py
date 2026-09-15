@@ -120,7 +120,27 @@ class TestRAG(unittest.TestCase):
 
     def test_retrieves_reasonable_certainty(self):
         hits = self.r.search("合理确定性 概率法 90%", top_k=3)
-        self.assertTrue(any("4-10(a)(22)" in h["citation"] for h in hits))
+        self.assertIn("Rule 4-10(a)(24)", [h["citation"] for h in hits])
+
+    def test_official_text_and_precise_citations(self):
+        """语料必须是官方原文，且条款号精确到段落层级。"""
+        c = self.r.get("Rule 4-10(a)(31)(ii)")
+        self.assertIn("scheduled to be drilled within five years", c["text"])
+        self.assertEqual(c["cfr"], "17 CFR 210.4-10(a)(31)(ii)")
+        self.assertEqual(c["ancestors"][-1]["citation"], "Rule 4-10(a)(31)")
+        price = self.r.get("Rule 4-10(a)(22)(v)")["text"]
+        self.assertIn("first-day-of-the-month", price)
+        self.assertIn("Rule 4-10(a)(17)", self.r.citations())            # 解析器不能把 (17) 当成下级分项
+        for must in ("Item 1202(b)(1)", "Item 1203(b)", "Item 1203(d)", "Rule 4-10(a)(22)(i)(B)"):
+            self.assertIn(must, self.r.citations())
+
+    def test_chinese_query_hits_price_rule(self):
+        hits = self.r.search("价格口径 12个月 首日价格 平均", top_k=3)
+        self.assertIn("Rule 4-10(a)(22)(v)", [h["citation"] for h in hits])
+
+    def test_explicit_citation_in_query(self):
+        hits = self.r.search("Item 1203(d) 说的是什么", top_k=3)
+        self.assertEqual(hits[0]["citation"], "Item 1203(d)")
 
 
 class TestPlans(unittest.TestCase):

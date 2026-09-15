@@ -16,8 +16,11 @@ from .features.build import build, encode, feature_columns
 from .labeling.labels import extract_all
 from .models.analog_retrieval import AnalogIndex, _resample_curve
 from .models.baseline_analog import AnalogBaseline
+from .models.attribution import global_shap
 from .models.conformal import Conformal, calibrate
+from .models.ensemble import blend, choose_weights
 from .models.gbdt_quantile import QuantileModel
+from .models.seq_model import SeqQuantileModel, sequence_tensor
 from .models import registry
 from .quality.gate import check_wells, summary as quality_summary
 
@@ -94,6 +97,19 @@ def metrics_for(y: pd.Series, pred: pd.DataFrame) -> Dict[str, float]:
     )
 
 
+def _calibrated(preds: Dict[str, pd.DataFrame], conf: Conformal) -> Dict[str, pd.DataFrame]:
+    out = {}
+    for tgt, dfp in preds.items():
+        lo, hi = conf.apply(tgt, dfp["p10"].to_numpy(float), dfp["p90"].to_numpy(float))
+        out[tgt] = pd.DataFrame({"p10": lo, "p50": dfp["p50"].to_numpy(float), "p90": hi}, index=dfp.index)
+    return out
+
+
+def _brief(m: Dict) -> Dict:
+    return {k: (round(float(m[k]), 4) if isinstance(m.get(k), float) and np.isfinite(m[k]) else m.get(k))
+            for k in ("n", "mae", "coverage", "interval_width")}
+
+
 def run_training(obs_days: int | None = None, split_method: str | None = None,
                  seed: int = 42) -> Dict:
     cfg = config()
@@ -131,13 +147,41 @@ def run_training(obs_days: int | None = None, split_method: str | None = None,
                           feature_cols=feat_cols, seed=seed)
     model.fit(X.loc[idx["train"]], Y.loc[idx["train"]])
 
-    # 保形校准
-    conf = Conformal(alpha=mcfg["conformal_alpha"])
-    if len(idx["calib"]):
-        pc = model.predict(X.loc[idx["calib"]])
-        for tgt, dfp in pc.items():
-            conf.fit_target(tgt, Y.loc[idx["calib"], tgt].to_numpy(float),
-                            dfp["p10"].to_numpy(float), dfp["p90"].to_numpy(float))
+    # 序列模型：直接读前 obs_days 天的逐日曲线，与梯度提升用同一批训练井
+    scfg = mcfg.get("seq") or {}
+    seq_model, seq_all = None, None
+    if scfg.get("enabled", True) and len(idx["train"]) >= 40:
+        seq_all = sequence_tensor(prod, X["well_id"].tolist(), obs_days)
+        seq_model = SeqQuantileModel(targets=targets, tab_cols=feat_cols, seed=seed,
+                                     n_seeds=int(scfg.get("n_seeds", 3)), hidden=int(scfg.get("hidden", 16)),
+                                     max_epochs=int(scfg.get("max_epochs", 200)))
+        seq_model.fit(seq_all[idx["train"]], X.loc[idx["train"]], Y.loc[idx["train"]])
+
+    def family(rows):
+        pg = model.predict(X.loc[rows])
+        ps = seq_model.predict(seq_all[rows], X.loc[rows], index=rows) if seq_model is not None else None
+        return pg, ps
+
+    # 校准集按投产时间交错对半：A 半选融合权重，B 半做保形校准 —— 选权重与校准不用同一批井
+    cal = idx["calib"]
+    if seq_model is not None and len(cal) >= 20:
+        cal_a, cal_b = cal[::2], cal[1::2]
+        pg_a, ps_a = family(cal_a)
+        blend_info = choose_weights(Y.loc[cal_a], pg_a, ps_a, targets)
+    else:
+        cal_a, cal_b, blend_info = cal[:0], cal, {}
+    weights = {t: float(blend_info.get(t, {}).get("weight", 0.0)) for t in targets}
+
+    # 保形校准：融合模型是线上口径；两个单模型各自校准一份，只为测试集上公平对比
+    alpha = mcfg["conformal_alpha"]
+    conf = Conformal(alpha=alpha)
+    conf_family = {"gbdt": Conformal(alpha=alpha), "seq": Conformal(alpha=alpha)}
+    if len(cal_b):
+        pg_b, ps_b = family(cal_b)
+        for c, preds_b in ((conf, blend(pg_b, ps_b, weights)), (conf_family["gbdt"], pg_b), (conf_family["seq"], ps_b)):
+            for tgt, dfp in (preds_b or {}).items():
+                c.fit_target(tgt, Y.loc[cal_b, tgt].to_numpy(float),
+                             dfp["p10"].to_numpy(float), dfp["p90"].to_numpy(float))
 
     # 基线 A：邻井类比
     base = AnalogBaseline(targets=targets).fit(
@@ -145,12 +189,13 @@ def run_training(obs_days: int | None = None, split_method: str | None = None,
 
     # 测试集评估
     Xte, Yte = X.loc[idx["test"]], Y.loc[idx["test"]]
-    pred = model.predict(Xte)
-    pred_cal = {}
-    for tgt, dfp in pred.items():
-        lo, hi = conf.apply(tgt, dfp["p10"].to_numpy(float), dfp["p90"].to_numpy(float))
-        pred_cal[tgt] = pd.DataFrame({"p10": lo, "p50": dfp["p50"].to_numpy(float),
-                                      "p90": hi}, index=dfp.index)
+    pg_t, ps_t = family(idx["test"])
+    pred = blend(pg_t, ps_t, weights)
+    pred_cal = _calibrated(pred, conf)
+    fam_cal = {"gbdt": _calibrated(pg_t, conf_family["gbdt"])}
+    if ps_t is not None:
+        fam_cal["seq"] = _calibrated(ps_t, conf_family["seq"])
+        fam_cal["blend"] = pred_cal
     base_pred = base.predict(master.set_index("well_id").loc[Xte["well_id"]].reset_index())
     for k in base_pred:
         base_pred[k].index = Xte.index
@@ -166,18 +211,27 @@ def run_training(obs_days: int | None = None, split_method: str | None = None,
                 if m_base["n"] and m_cal["n"] and np.isfinite(m_base["mae"]) else None)
         report[tgt] = dict(model=m_cal, model_uncalibrated=m_raw, baseline=m_base,
                            mae_gain_vs_baseline_pct=None if gain is None else round(gain, 1),
-                           conformal_delta=round(conf.delta.get(tgt, 0.0), 4))
+                           conformal_delta=round(conf.delta.get(tgt, 0.0), 4),
+                           families={k: _brief(metrics_for(Yte[tgt], v[tgt])) for k, v in fam_cal.items() if tgt in v},
+                           seq_weight=weights.get(tgt, 0.0))
 
     analog = AnalogIndex(feature_cols=feat_cols, obs_days=obs_days).fit(
         X[X["well_id"].isin(tr_ids)], prod[prod["well_id"].isin(tr_ids)], train_labels)
 
     version = registry.make_version()
     bundle = dict(model=model, conformal=conf, baseline=base, analog=analog,
+                  seq_model=seq_model, blend_weights=weights, blend_selection=blend_info,
+                  conformal_family=conf_family, global_shap=global_shap(model, X),
                   feature_cols=feat_cols, obs_days=obs_days,
                   train_labels=train_labels, train_ids=tr_ids,
                   coverage={t: r["model"]["coverage"] for t, r in report.items()},
                   meta=dict(model_version=version, label_def_version=label_def_version(),
-                            backend=model.backend, split_method=split_method,
+                            backend=model.backend + ("+tcn" if seq_model is not None else ""),
+                            split_method=split_method,
+                            seq=None if seq_model is None else dict(
+                                history=seq_model.history, n_seeds=seq_model.n_seeds, channels=len(seq_all[0]),
+                                n_calib_blend=int(len(cal_a)), n_calib_conformal=int(len(cal_b)),
+                                weights=weights),
                             n_train=len(tr_ids), n_calib=len(cal_ids), n_test=len(te_ids),
                             n_eligible=len(elig), n_wells_total=len(master),
                             min_lifecycle_days=MIN_LIFECYCLE_DAYS,

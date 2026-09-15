@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Set, Tuple
 
 # 先剥掉条款引用与日期，避免把 "Rule 4-10(a)(22)"、"2026-12-31" 里的数字当成结论数值
-CITATION_RE = re.compile(r"\[[^\]]*\]|Rule\s*[\d\-()a-zA-Z.]+", re.I)
+CITATION_RE = re.compile(r"\[[^\]]*\]|(?:Rule|Item)\s*[\d\-()a-zA-Z.]+|\d+\s*CFR\s*[\d.\-()a-zA-Z]+", re.I)
 DATE_RE = re.compile(r"\d{4}\s*[-/年]\s*\d{1,2}\s*[-/月]?\s*\d{0,2}\s*日?")
 # 标识符：ASCII 词里同时含字母和数字的整体（井号 SB-C-0449、版本号 gbdt-q-2026.09、
 # 追溯号 ag_b7d0…、价格册 deck_2026_12、口径 v1、分位标签 P50）。

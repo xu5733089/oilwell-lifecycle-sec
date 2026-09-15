@@ -29,6 +29,19 @@ model:
     method: "time"             # time | group | random（正式评测只用 time / group）
     calib_ratio: 0.2
     test_ratio: 0.25
+  seq:                         # 早期序列模型（纯 numpy 膨胀卷积 TCN），与梯度提升按目标融合
+    enabled: true
+    n_seeds: 3
+    hidden: 16
+    max_epochs: 200
+
+# 带物理约束的递减模型（src/reserves/physics_dca.py）：线性流 → 边界控制流 → 终端递减
+physics_dca:
+  enabled: true
+  min_analogs: 5               # 同区块成熟井少于此数时用宽先验
+  n_bootstrap: 30
+  eur_cap_rf: high_pct         # EUR 上限 = 容积法 OOIP P50 × 区块采收率 90% 分位
+  hindcast_horizons: [6, 12, 24]
 
 llm:
   # backend: internal | glm | mock

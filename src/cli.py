@@ -10,6 +10,8 @@
     python -m src.cli report GL-A-0357
     python -m src.cli unit-eval       # SEC 单元"新-老-措"构成评估并入库
     python -m src.cli unit-report     # SEC 单元储量预评估报告（Word + 可打印 HTML）
+    python -m src.cli eval-dca        # 递减模型回测：经验 Arps vs 带物理约束的递减模型
+    python -m src.cli build-standards # 由 eCFR 官方原文构建条款级准则库（--fetch 先联网拉取）
 """
 from __future__ import annotations
 
@@ -47,6 +49,12 @@ def cmd_train(args) -> None:
         print(f"{tgt:14s}{r['model']['mae']:10.2f}{r['baseline']['mae']:10.2f}"
               f"{(str(g) + '%'):>8s}{r['model']['coverage']:8.2f}"
               f"{r['model_uncalibrated']['coverage']:8.2f}")
+    if meta.get("seq"):
+        print(f"\n模型族对比（测试集，均已保形校准）｜序列模型融合权重 {meta['seq']['weights']}")
+        print(f"{'目标':14s}{'梯度提升':>12s}{'序列模型':>12s}{'融合':>12s}")
+        for tgt, r in meta["report"].items():
+            fam = r.get("families", {})
+            print(f"{tgt:14s}" + "".join(f"{fam.get(k, {}).get('mae', float('nan')):12.2f}" for k in ("gbdt", "seq", "blend")))
     print("数据质量门禁：", meta["quality"])
 
 
@@ -209,6 +217,25 @@ def cmd_eval_algo(args) -> None:
     print("报告：", out["report_path"])
 
 
+def cmd_eval_dca(args) -> None:
+    from .eval.eval_dca import run
+    out = run()
+    print(f"类比井库 {out['n_library']} 口｜经济极限 {out['q_econ']} t/d")
+    print(f"{'峰后月数':>8s}  {'方法':22s}{'井数':>6s}{'12月产量误差':>12s}{'EUR误差':>9s}{'EUR偏差':>9s}{'高估>20%':>9s}")
+    for r in out["table"]:
+        e = r.get("eur", {})
+        print(f"{r['horizon_months']:>8d}  {r['method_cn']:22s}{r['n_wells']:>6d}{r['next12'].get('mdape_pct', '—'):>11}%"
+              f"{e.get('mdape_pct', '—'):>8}%{e.get('bias_pct', '—'):>8}%{e.get('over20_pct', '—'):>8}%")
+    print("\n" + out["conclusion"])
+    print("报告：", out["report_path"])
+
+
+def cmd_build_standards(args) -> None:
+    from .agent.rag.build_corpus import ECFR_DATE, build
+    counts = build(date=args.date or ECFR_DATE, do_fetch=args.fetch)
+    print("条款库已生成：", "，".join(f"{k} {v} 段" for k, v in counts.items()), f"｜合计 {sum(counts.values())} 段")
+
+
 def cmd_report(args) -> None:
     from .report.docx_report import build_report
     p = build_report(args.well_code, as_of=args.as_of)
@@ -236,6 +263,7 @@ def cmd_serve(args) -> None:
             from .api import services as S
             t0 = time.time()
             try:
+                S._physics_library()
                 r = S.warm_unit_evaluations()
                 print(f"单元评估预热完成：读快照 {r['n_from_snapshot']} 项，重算 {r['n_computed']} 项，"
                       f"耗时 {time.time() - t0:.1f}s", flush=True)
@@ -276,6 +304,14 @@ def main(argv: Optional[list] = None) -> int:
 
     p = sub.add_parser("eval-algo", help="三种切分方式对比，证明不能用随机切分")
     p.set_defaults(func=cmd_eval_algo)
+
+    p = sub.add_parser("eval-dca", help="递减模型回测：经验 Arps vs 带物理约束的递减模型")
+    p.set_defaults(func=cmd_eval_dca)
+
+    p = sub.add_parser("build-standards", help="由 eCFR 官方原文构建条款级准则库")
+    p.add_argument("--fetch", action="store_true", help="先从 eCFR 拉取原文到 data/standards/raw")
+    p.add_argument("--date", default=None, help="eCFR 版本日期，默认 2025-01-01")
+    p.set_defaults(func=cmd_build_standards)
 
     p = sub.add_parser("report", help="生成单井评估报告初稿")
     p.add_argument("well_code")

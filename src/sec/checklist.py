@@ -47,7 +47,7 @@ def build(*, prod_days: int, economic: Dict, classification: Dict,
                f"{economic.get('current_rate', float('nan')):.2f} t/d；"
                + (f"但产量剖面不可得：{dca_error}" if dca_error else
                   _t_econ_text(economic))),
-              "Rule 4-10(a)(22)"),
+              "Rule 4-10(a)(10)"),
         _item("价格采用 12 个月首日价格的未加权算术平均",
               PASS,
               f"价格册 {economic.get('price_deck_id')}（as_of={economic.get('as_of')}）"
@@ -56,13 +56,13 @@ def build(*, prod_days: int, economic: Dict, classification: Dict,
         _item("采用现有操作方法与法规，未假设新技术或政策变化",
               PASS,
               "评估参数集未引入未来技术改进或政策假设；成本取当前成本，不含通胀预期",
-              "Rule 4-10(a)(22)"),
+              "Rule 4-10(a)(22)(v)"),
         _item("合理确定性：概率法取低估计口径，且区间已通过保形校准",
               PASS if (coverage is not None and abs(coverage - 0.8) <= 0.08) else HUMAN,
-              (f"准则要求概率法下不低于估计值的概率不小于 90%；"
+              (f"准则要求概率法下实际采出量等于或超过估计值的概率至少 90%；"
                f"模型 {model_version}；校准集经验覆盖率 {coverage:.2f}（名义 0.80）"
                if coverage is not None else "缺少校准集覆盖率报告，需补充"),
-              "Rule 4-10(a)(22)"),
+              "Rule 4-10(a)(24)"),
         _item("储量类别判定依据充分",
               PASS if not classification.get("needs_human") else HUMAN,
               f"判定 {classification.get('category')}；依据：" + "；".join(classification.get("evidence", [])),
@@ -80,8 +80,8 @@ def build(*, prod_days: int, economic: Dict, classification: Dict,
         _item("可靠技术适用性说明",
               PASS if reliability_report else HUMAN,
               (reliability_report or "需附本平台方法在本区块的回测精度与适用边界说明")
-              + "（2009 年油气披露现代化规则允许以经证明可靠的技术建立合理确定性）",
-              "Reliable Technology"),
+              + "（可靠技术须经现场检验，并在被评估地层或类比地层中证明结果一致、可重复）",
+              "Rule 4-10(a)(25)"),
         _item("数据可追溯：数据源、模型版本、口径版本、时间戳齐全",
               PASS,
               f"data_source={data_source}；model_version={model_version}；"
