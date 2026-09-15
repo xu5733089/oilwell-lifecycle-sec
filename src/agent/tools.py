@@ -110,6 +110,15 @@ REGISTRY: Dict[str, ToolSpec] = {
         ToolSpec("unit_sensitivity", S.unit_sensitivity,
                  "油价、成本、产量、递减率对 PDP 的影响曲线与敏感权重",
                  dict(scope=_SCOPE, as_of="评估基准日", scenario=_SCENARIO), ["scope"]),
+        ToolSpec("unit_proved_categories", S.unit_proved_categories,
+                 "证实储量类别：PDP、PDNP（停产井）、PUD（部署井位）的储量与逐井 / 逐井位判定依据、五年规则预警",
+                 dict(scope=_SCOPE, as_of="评估基准日", scenario=_SCENARIO), ["scope"]),
+        ToolSpec("unit_category_tracking", S.unit_category_tracking,
+                 "两期之间 PUD 与 PDNP 的滚动：PUD 转化率、五年规则移出、停产井复产与新增停产",
+                 dict(scope=_SCOPE, from_as_of="期初基准日", to_as_of="期末基准日", scenario=_SCENARIO), ["scope"]),
+        ToolSpec("unit_depletion_impairment", S.unit_depletion_impairment,
+                 "产量法折耗额与减值测试：期初净值、本期投入、折耗率、折耗额、可收回金额、减值额",
+                 dict(scope=_SCOPE, as_of="评估基准日"), ["scope"]),
     ]
 }
 

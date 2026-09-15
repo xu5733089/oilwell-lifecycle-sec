@@ -33,6 +33,11 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
   另有两处不改变业务数据的写入：`sec_eval_snapshot` 是单元评估的计算缓存（指纹覆盖数据、模型、口径、
   价格册与评估算法源码，不符即作废，可随时清空）；`src/report/unit_report.py` 把报告文件写到
   `data/artifacts/` 并记审计日志 —— 报告里的数字一律取自 services，报告层只排版不算数。
+  界面上的两类写入同样只走 HTTP、记审计日志、**不注册为智能体工具**：指标锚点方案（`services.save_indicator_profile` 等，
+  内置方案只读）与业务数据导入（`src/ingest/imports.py`：先预检、无错误才写入、按批次可撤销，写完清服务缓存）。
+  路由层的越权词表里有"导入"，智能体被问到导入会直接拒绝。
+- 证实储量类别（PDNP、PUD）与折耗减值的纯计算在 `src/sec/composition.py`（`pud_reserves`、`category_rollforward`）
+  与 `src/sec/finance.py`；部署井位、资产账面、在产井坐标由 `services._category_cfg` / `_unit_depletion_chain` 准备好传入。
 - `src/api/services.py` 是唯一的数值出口。新增能力时先在这里加函数，再在
   `src/agent/tools.py` 注册成工具，最后在 `src/agent/plans.py` 挂进计划模板。
 - 任何 service 返回体都必须带四个追溯字段
@@ -55,7 +60,7 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
 - 评估对象层级（公司 → 采油厂 → SEC 单元）只读 `sec_unit` / `unit_well` 两张表；`conf/units.yaml` 只给合成适配器用。
 - 已证实储量一律取低值：老井逐井"指数递减"与"最佳估计"取低值；新井"动态法或类比法"与"模型法低估计"取低值；
   老井基础里本期做过措施的井用**措施前**基线，措施带来的部分只在措施增储里算一次。
-- 对账里技术修订是轧差项；类别调整在没有复产 / PUD 转 PDP 数据时计 0，不许编。
+- 对账里技术修订是轧差项；类别调整只由逐井状态迁移算出（停产井复产转入、在产井停井转出），PUD 钻井转化按提采新井计入，不许手填。
 - 三套价格（sec / assessment / impairment）在 `conf/price_deck.yaml` 的 `scenarios`；sec 情景的价格固定取 12 个月首日均价。
 - 模板里的百分比、合计等数字必须由服务返回（如 `weight_pct`），模板里乘 100 也算智能体层做算术。
 
@@ -67,7 +72,7 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
 - 真实数据到位时：新增 `dqmds_adapter.py`，把源字段映射成同样的 DataFrame，**不要动上层**。
 - 合成数据的真值（`data/synth_truth.csv`、`data/synth_event_truth.csv`）**只能被测试和评测用**，
   业务代码不许依赖它 —— 真实数据没有真值。
-- 真实轨道的适配器除四张基础表外，还要写 `sec_unit`、`unit_well`（储量单元台账）和 `unit_plan_monthly`（计划系统）。
+- 真实轨道的适配器除四张基础表外，还要写 `sec_unit`、`unit_well`（储量单元台账）；`unit_plan_monthly`（计划）、`unit_asset_book`（财务台账）、`unit_location`（开发方案井位）既可由适配器写，也可由业务人员在 系统 · 数据导入 上传。
 - 所有记录带 `data_source`；合成数据在任何对外呈现里都要标注"模拟数据"。
 
 ## 加东西的顺序
@@ -111,4 +116,5 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
 - 不要在代码里硬编码井号、区块名、价格 —— 走 `conf/`
 - 不要把真实井号、坐标写进任何示例或测试；参考材料（汇报照片、兄弟单位资料）里的真实油田名、井号、储量数字同样不许入库
 - 前端的构成配色是身份色：老井基础 `--c1`、措施 `--c2`、提采新井 `--c3`、扩边井 `--c4`，全站固定；
+  证实储量类别色 PDP `--k1`、PDNP `--k2`、PUD `--k3` 是另一组，不与构成色混用；
   新增分类色必须先跑 dataviz 的 `validate_palette.js`（浅色、深色各一次）；不画双轴图

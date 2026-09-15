@@ -99,6 +99,16 @@ PLANS: Dict[str, List[Step]] = {
     "unit_sensitivity": [
         Step("unit_sensitivity", {"scope": "scope", "as_of": "as_of", "scenario": "scenario"}),
     ],
+    # 类别判定属于合规结论（PUD 五年规则、连续性），必须带条款检索
+    "unit_categories": [
+        Step("unit_proved_categories", {"scope": "scope", "as_of": "as_of", "scenario": "scenario"}),
+        Step("unit_category_tracking", {"scope": "scope", "from_as_of": "from_as_of", "to_as_of": "to_as_of",
+                                        "scenario": "scenario"}, optional=True),
+        Step("search_standard", {}, {"query": "已开发未生产 PDNP 未开发储量 PUD 五年规则 连续性", "top_k": 3}),
+    ],
+    "unit_depletion": [
+        Step("unit_depletion_impairment", {"scope": "scope", "as_of": "as_of"}),
+    ],
     "fallback": [],
 }
 

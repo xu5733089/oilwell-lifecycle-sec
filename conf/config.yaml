@@ -16,6 +16,9 @@ synth:
   recent_frac: 0.10            # 上一评估年投产的井占基础井数的比例（让相邻两期都有新井）
   extension_frac: 0.25         # 新井中位于已探明范围之外的扩边井比例
   plan_years: [2025, 2026]     # 生成计划值的年份
+  reactivation_frac: 0.08      # 在产老井中插入"停井后复产"的比例（PDNP 转 PDP 有数据可跟踪）
+  pud_locations_per_unit: 8    # 每个单元生成的未钻部署井位数
+  asset_nbv_factor: 0.35       # 合成资产净值的整体缩放（让少数单元出现减值，演示用）
 
 model:
   obs_days: 90                 # 新井早期观测窗口
@@ -59,6 +62,20 @@ sec_unit:
   type_curve:
     min_history_months: 24     # 进入类型曲线的老井至少要有这么长历史
   oil_density_t_per_m3: 0.85   # 含水率换算用的原油密度
+  pdnp:                        # 已开发未生产（停产井）
+    max_shut_in_months: 24     # 停产超过该时长为长停井，不计入 PDNP
+  pud:                         # 已探明未开发（部署井位）
+    radius_m: 1000             # 连续性：井位半径内须有当期在产井
+    min_producing_neighbors: 3
+    horizon_years: 5           # 五年规则：须在首次入账后 5 年内钻井
+    certainty_factor: 0.85     # 单元类型曲线折减，体现合理确定性
+  finance:                     # 折耗与减值（金额单位：万元；示例值，正式使用由财务部门提供）
+    fx_cny_per_usd: 7.10
+    discount_rate: 0.10        # 减值测试折现率（年）
+    well_capex_wan: {水平井: 450, 直井: 200, default: 400}       # 单井钻完井投资
+    measure_cost_wan: {frac: 90, perforation: 20, acid: 15, workover: 35, sand_control: 25, waterflood: 10, default: 30}
+    restart_cost_wan: 15       # 停产井复产作业费：PDNP 剩余可采的净收入须覆盖它
+    pud_capex_wan: 500         # 部署井位未给投资时的默认钻完井投资
   measure_types:
     perforation: "补孔"
     frac: "压裂"

@@ -24,6 +24,7 @@ COLORS = {"old_base": "#0E8F7F", "measure": "#C25E12", "new_infill": "#3B4FA8", 
 NEUTRAL, NEUTRAL_2, INK, INK_2, MUTED, RULE, GRID = ("#A9B1BC", "#6F7A89", "#1A2332", "#3F4A5A",
                                                     "#667185", "#DCE1E8", "#EBEEF2")
 C1_SOFT = "#8CC7BE"
+CAT_COLORS = {"PDP": "#1F7FB8", "PDNP": "#A67A0C", "PUD": "#7E57C2"}
 CJK_FONTS = ("PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC",
              "Microsoft YaHei", "SimHei", "WenQuanYi Micro Hei", "STHeiti", "Heiti SC", "Arial Unicode MS")
 LEVEL_CN = {"unit": "SEC 单元", "plant": "采油厂", "company": "公司"}
@@ -33,7 +34,8 @@ RECON_SHORT = {"opening": "期初", "production": "产量消耗", "price_revisio
 RECON_COMP = {"new_wells": "new_infill", "measure": "measure", "extension": "extension"}
 SERVICE_CN = {"comp": "SEC 储量构成", "prod": "逐月产量构成与计划对标", "decline": "老井基础递减",
               "new_wells": "新井识别", "measures": "措施效果", "reconcile": "储量对账",
-              "attribution": "变化归因", "sensitivity": "敏感性分析", "indicators": "开发与经营指标"}
+              "attribution": "变化归因", "sensitivity": "敏感性分析", "indicators": "开发与经营指标",
+              "categories": "证实储量类别", "tracking": "类别滚动", "depletion": "折耗与减值"}
 
 
 # --------------------------------------------------------------------------- #
@@ -50,6 +52,12 @@ def st(v) -> str:
 
 def n(v, d: int = 0) -> str:
     return "—" if v is None else f"{v:,.{d}f}"
+
+
+def wan(v) -> str:
+    if v is None:
+        return "—"
+    return f"{v / 1e4:,.2f} 亿元" if abs(v) >= 1e4 else f"{v:,.0f} 万元"
 
 
 def pct(v, d: int = 1) -> str:
@@ -94,13 +102,16 @@ def gather(scope: str, as_of: Optional[str] = None, scenario: str = "sec") -> Di
         ("measures", S.unit_measure_effects, (scope, as_of), {}),
         ("sensitivity", S.unit_sensitivity, (scope, as_of, scenario), {}),
         ("indicators", S.unit_indicators, (scope,), dict(as_of_list=",".join(d for d in (prev, as_of) if d))),
+        ("categories", S.unit_proved_categories, (scope, as_of, scenario), {}),
+        ("depletion", S.unit_depletion_impairment, (scope, as_of), {}),
     ]
     if prev:
         jobs += [("reconcile", S.unit_reconcile, (scope,), dict(from_as_of=prev, to_as_of=as_of, scenario=scenario)),
                  ("attribution", S.unit_change_attribution, (scope,),
-                  dict(from_as_of=prev, to_as_of=as_of, scenario=scenario))]
+                  dict(from_as_of=prev, to_as_of=as_of, scenario=scenario)),
+                 ("tracking", S.unit_category_tracking, (scope,), dict(from_as_of=prev, to_as_of=as_of, scenario=scenario))]
     else:
-        data["reconcile"] = data["attribution"] = no_prev
+        data["reconcile"] = data["attribution"] = data["tracking"] = no_prev
     for key, fn, args, kw in jobs:
         try:
             data[key] = fn(*args, **kw)
@@ -171,6 +182,54 @@ def _fig_units(plt, comp: Dict):
     ax.margins(x=0.1)
     _wan(ax, "x")
     ax.legend(ncol=4, loc="lower left", bbox_to_anchor=(0, 1.0), fontsize=8, handlelength=1, columnspacing=1.2)
+    return fig
+
+
+def _fig_categories(plt, cat: Dict):
+    units = cat["units"]
+    fig, ax = plt.subplots(figsize=(7.2, 0.34 * len(units) + 1.0))
+    y = list(range(len(units)))
+    left = [0.0] * len(units)
+    names = {c["key"]: c["name"] for c in cat["categories"]}
+    for k, color in CAT_COLORS.items():
+        vals = [max(u.get(k) or 0.0, 0.0) for u in units]
+        ax.barh(y, vals, left=left, height=0.56, color=color, edgecolor="white", linewidth=1.2, label=names.get(k, k))
+        left = [a + b for a, b in zip(left, vals)]
+    for yi, u, x in zip(y, units, left):
+        ax.text(x, yi, "  " + _compact(u["total_t"]), va="center", fontsize=8, color=MUTED)
+    ax.set_yticks(y, [u["unit_id"] for u in units])
+    ax.invert_yaxis()
+    ax.grid(axis="y", visible=False)
+    ax.margins(x=0.1)
+    _wan(ax, "x")
+    ax.legend(ncol=3, loc="lower left", bbox_to_anchor=(0, 1.0), fontsize=8, handlelength=1)
+    return fig
+
+
+ROLL_TINY = {"opening": "期初", "converted": "钻井转开发", "expired_5yr": "五年规则移出", "removed": "其他移出",
+             "revision": "修订", "new_booking": "新入账", "closing": "期末"}
+
+
+def _fig_roll(plt, rows: List[Dict]):
+    fig, ax = plt.subplots(figsize=(7.2, 2.8))
+    run, bars = 0.0, []
+    for r in rows:
+        total = r["key"] in ("opening", "closing")
+        a, b = (0.0, r["value"]) if total else (run, run + r["value"])
+        run = b
+        bars.append((r, a, b, total))
+    for i, (r, a, b, total) in enumerate(bars):
+        color = NEUTRAL if total else CAT_COLORS["PDP"] if r["key"] == "converted" else \
+            CAT_COLORS["PUD"] if r["key"] == "new_booking" else NEUTRAL_2
+        ax.bar(i, b - a, bottom=a, width=0.58, color=color)
+        if i < len(bars) - 1:
+            ax.plot([i + 0.29, i + 0.71], [b, b], color=RULE, lw=0.8)
+        ax.text(i, max(a, b), ("" if total or r["value"] < 0 else "+") + _compact(r["value"]), ha="center", va="bottom",
+                fontsize=7.5, color=MUTED)
+    ax.set_xticks(range(len(bars)), [ROLL_TINY.get(r["key"], r["item"]) for r, *_ in bars], fontsize=7.5)
+    ax.axhline(0, color=RULE, lw=0.8)
+    ax.grid(axis="x", visible=False)
+    _wan(ax)
     return fig
 
 
@@ -319,6 +378,19 @@ def build_blocks(data: Dict, report_trace_id: str) -> List[Block]:
         bullets.append(f"与 {att['from_as_of']} 相比，PDP 由 {t(att['opening_t'])} 变为 {t(att['closing_t'])}，"
                        f"变化 {st(att['change_t'])}；对账{'闭合' if rc['balanced'] else '未闭合（差额 ' + n(rc['difference'], 1) + ' t）'}，"
                        f"产量法折耗率 {pct(rc['depletion_rate_pct'], 2)}。影响最大的三项：{top}。")
+    if not err("categories"):
+        cat = data["categories"]
+        by = {c["key"]: c for c in cat["categories"]}
+        conv = ""
+        if not err("tracking") and data["tracking"].get("pud"):
+            conv = f"；本期 PUD 转化率 {pct(data['tracking']['pud']['conversion_rate_pct'])}"
+        bullets.append(f"证实储量合计 {t(cat['total_proved_t'])}：PDP {t(by['PDP']['reserves_t'])}、"
+                       f"PDNP {t(by['PDNP']['reserves_t'])}（{by['PDNP']['n_items']} 口停产井）、"
+                       f"PUD {t(by['PUD']['reserves_t'])}（{by['PUD']['n_items']} 个部署井位）{conv}。")
+    if not err("depletion"):
+        sm = data["depletion"]["summary"]
+        bullets.append(f"产量法折耗率 {pct(sm['depletion_rate_pct'], 2)}，折耗额 {wan(sm['depletion_wan'])}；"
+                       f"减值测试 {sm['n_impaired']} 个单元减值，减值额 {wan(sm['impairment_wan'])}，期末资产净值 {wan(sm['closing_nbv_wan'])}。")
     scs = [s for s in data["scenarios"] if "_error" not in s]
     if scs:
         bullets.append("三种价格情景下的 PDP：" + "；".join(f"{s['scenario_label']} {t(s['total_t'])}" for s in scs) + "。")
@@ -451,8 +523,79 @@ def build_blocks(data: Dict, report_trace_id: str) -> List[Block]:
                               for d in att["drivers"]]))
         B.append(("note", att["note"] + "。"))
 
-    # 八、敏感性
-    B.append(("h1", "八、敏感性分析"))
+    # 八、证实储量类别
+    B.append(("h1", "八、证实储量类别（PDP / PDNP / PUD）"))
+    if err("categories"):
+        B.append(("p", "证实储量类别不可得：" + err("categories")))
+    else:
+        cat = data["categories"]
+        B.append(("p", f"{cat['scenario_label']}口径下证实储量合计 {t(cat['total_proved_t'])}。"))
+        if len(cat["units"]) > 1:
+            figure("categories", "各单元证实储量类别", lambda p: _fig_categories(p, cat))
+        B.append(_table(["类别", "储量", "占比", "数量", "取值依据"],
+                        [[c["name"], t(c["reserves_t"]), pct(c["share_pct"]),
+                          f"{c['n_items']} {'个井位' if c['key'] == 'PUD' else '口井'}", c["basis"]] for c in cat["categories"]]
+                        + [["合计", t(cat["total_proved_t"]), "100.0%", "", ""]],
+                        [False, True, True, True, False], total=True, wrap=[4]))
+        pu = cat["pud"]
+        B.append(("h2", "（一）PUD 部署井位"))
+        B.append(("p", f"入账规则：{pu['rule']}。本期井位判定：" + "，".join(
+            f"{S.PUD_STATUS_CN.get(k, k)} {v} 个" for k, v in pu["n_by_status"].items()) + "。"))
+        booked = [l for l in pu["locations"] if l["status"] == "booked"]
+        if booked:
+            B.append(_table(["井位", "单元", "计划钻井", "首次入账", "五年期限", "周边在产井", "剩余可采"],
+                            [[l["location_id"], l["unit_id"], l["planned_drill_ym"], l["first_booked_as_of"] or "本期",
+                              l["deadline_ym"], n(l["n_producing_neighbors"]), t(l["reserves_t"])] for l in booked[:15]],
+                            [False, False, False, False, False, True, True]))
+        if cat["warnings"]:
+            B.append(("bullets", ["预警：" + w["text"] for w in cat["warnings"]]))
+        tr = None if err("tracking") else data["tracking"]
+        if tr and tr.get("pud"):
+            tp = tr["pud"]
+            B.append(("p", f"{tr['from_as_of']} → {tr['to_as_of']}：期初入账 {tp['n_opening']} 个井位，钻井转化 {tp['n_converted']} 个"
+                           f"（转化率 {pct(tp['conversion_rate_pct'])}），五年规则移出 {tp['n_expired']} 个，其他移出 {tp['n_removed']} 个，"
+                           f"新入账 {tp['n_new']} 个，期末 {tp['n_closing']} 个。"))
+            figure("pud_roll", "PUD 滚动", lambda p: _fig_roll(p, tp["table"]))
+            B.append(_table(["行项", "储量变动"], [[r["item"], t(r["value"]) if r["key"] in ("opening", "closing") else st(r["value"])]
+                                               for r in tp["table"]], [False, True]))
+        pdn = cat["pdnp"]
+        B.append(("h2", "（二）PDNP 停产井"))
+        B.append(("p", f"规则：{pdn['rule']}。停产井判定：" + "，".join(
+            f"{S.PDNP_STATUS_CN.get(k, k)} {v} 口" for k, v in pdn["n_by_status"].items())
+                       + f"；计入 PDNP {pdn['n_booked']} 口，{t(pdn['reserves_t'])}。"))
+        bw = [w for w in pdn["wells"] if w["status"] == "booked"][:15]
+        if bw:
+            B.append(_table(["井号", "单元", "最后生产", "停产月数", "PDNP 储量", "停产时日产 (t/d)"],
+                            [[w["well_code"], w["unit_id"], w["last_prod_ym"], n(w["shut_in_months"]), t(w["reserves_t"]),
+                              n(w["rate_at_shut_t_per_d"], 2)] for w in bw], [False, False, False, True, True, True]))
+        if tr and tr.get("pdnp"):
+            td, cc = tr["pdnp"], tr["pdp_category_change"]
+            B.append(("p", f"期初 PDNP {td['n_opening']} 口，复产转 PDP {td['n_reactivated']} 口，长停或不经济移出 {td['n_removed']} 口，"
+                           f"新增停产 {td['n_new']} 口，期末 {td['n_closing']} 口。PDP 对账中的类别调整：停产井复产转入 "
+                           f"{t(cc['reactivated_t'])}（{cc['n_reactivated']} 口），在产井停井转出 {st(cc['shut_in_t'])}（{cc['n_shut_in']} 口）。"))
+        B.append(("note", (tr or cat)["note"] + "。"))
+
+    # 九、折耗与减值
+    B.append(("h1", "九、折耗与减值测试"))
+    if err("depletion"):
+        B.append(("p", "折耗与减值不可得：" + err("depletion")))
+    else:
+        dp = data["depletion"]
+        sm, asm = dp["summary"], dp["assumptions"]
+        B.append(("p", f"期初资产净值 {wan(sm['opening_nbv_wan'])}，本期资本化投入 {wan(sm['capex_additions_wan'])}；"
+                       f"产量法折耗率 {pct(sm['depletion_rate_pct'], 2)}，折耗额 {wan(sm['depletion_wan'])}，折耗后账面价值 {wan(sm['carrying_wan'])}。"
+                       f"按{asm['impairment_scenario']}、折现率 {asm['discount_rate']:.0%} 测算可收回金额 {wan(sm['recoverable_wan'])}，"
+                       f"{sm['n_impaired']} 个单元发生减值，减值额 {wan(sm['impairment_wan'])}，期末资产净值 {wan(sm['closing_nbv_wan'])}。"))
+        B.append(_table(["单元", "期初净值", "本期投入", "折耗率", "折耗额", "账面价值", "可收回金额", "减值额", "期末净值"],
+                        [[u["unit_id"], wan(u["opening_nbv_wan"]), wan(u["capex_additions_wan"]), pct(u["depletion_rate_pct"], 2),
+                          wan(u["depletion_wan"]), wan(u["carrying_wan"]), wan(u["recoverable_wan"]),
+                          wan(u["impairment_wan"]) if u["impaired"] else "—", wan(u["closing_nbv_wan"])] for u in dp["units"]],
+                        [False] + [True] * 8))
+        B.append(("bullets", dp["method"]))
+        B.append(("note", dp["note"] + f"。汇率 {asm['fx_cny_per_usd']} 元/美元。"))
+
+    # 十、敏感性
+    B.append(("h1", "十、敏感性分析"))
     if err("sensitivity"):
         B.append(("p", "敏感性分析不可得：" + err("sensitivity")))
     else:
@@ -470,8 +613,8 @@ def build_blocks(data: Dict, report_trace_id: str) -> List[Block]:
                             [False, False] + [True] * len(names)))
         B.append(("note", se["note"] + "。"))
 
-    # 九、指标
-    B.append(("h1", "九、开发与经营指标评价"))
+    # 十一、指标
+    B.append(("h1", "十一、开发与经营指标评价"))
     if err("indicators"):
         B.append(("p", "指标评价不可得：" + err("indicators")))
     else:
@@ -493,8 +636,8 @@ def build_blocks(data: Dict, report_trace_id: str) -> List[Block]:
         B.append(_table(cols, rows, [False, False] + [True] * (2 * len(ps))))
         B.append(("note", ind["scoring"] + "。"))
 
-    # 十、口径与局限
-    B.append(("h1", "十、口径与局限"))
+    # 十二、口径与局限
+    B.append(("h1", "十二、口径与局限"))
     lim = [DISCLAIMER, "报告中的全部数值均取自平台算法内核的返回结果，与系统界面、智能问答同源，可凭附录 B 的追溯号回查。"]
     if comp.get("aggregation_note"):
         lim.append(comp["aggregation_note"] + "。")

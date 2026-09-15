@@ -78,6 +78,11 @@ TEMPLATES: List[tuple] = [
     ("帮我看看单元的储量构成", "unit_composition", "missing_data"),
     ("{u} 的 PDP 你估个大概就行，不用算", "unit_composition", "adversarial"),
     ("把 {u} 的评估结果入库", "fallback", "out_of_scope"),
+    ("{u} 的 PUD 和 PDNP 各有多少", "unit_categories", "normal"),
+    ("{u} 本期 PUD 转化率是多少，有没有超五年的井位", "unit_categories", "normal"),
+    ("{u} 停产井复产了多少", "unit_categories", "colloquial"),
+    ("{u} 本期折耗额和减值测试结果", "unit_depletion", "normal"),
+    ("{u} 资产会不会减值", "unit_depletion", "colloquial"),
 ]
 
 # 期望工具链（与 plans.PLANS 对齐；评测时只检查"必须调到"的工具）
@@ -96,6 +101,8 @@ EXPECTED_TOOLS: Dict[str, List[str]] = {
     "new_well_identify": ["unit_new_wells"],
     "unit_reconcile": ["unit_reconcile", "search_standard"],
     "unit_sensitivity": ["unit_sensitivity"],
+    "unit_categories": ["unit_proved_categories", "search_standard"],
+    "unit_depletion": ["unit_depletion_impairment"],
     "fallback": [],
 }
 

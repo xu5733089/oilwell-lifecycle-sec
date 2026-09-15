@@ -154,6 +154,55 @@ CREATE TABLE IF NOT EXISTS unit_plan_monthly (
     PRIMARY KEY (unit_id, ym)
 );
 
+-- 部署井位（开发方案中的井位）：PUD 入账、五年规则与转化跟踪
+CREATE TABLE IF NOT EXISTS unit_location (
+    location_id        TEXT PRIMARY KEY,
+    unit_id            TEXT NOT NULL,
+    x_off              REAL NOT NULL,
+    y_off              REAL NOT NULL,
+    planned_drill_ym   TEXT NOT NULL,     -- 计划钻井年月 YYYY-MM
+    first_booked_as_of TEXT,              -- 首次作为 PUD 入账的评估基准日；空 = 尚未入账
+    drilled_well_id    TEXT,              -- 已钻：对应 well_master.well_id
+    status             TEXT NOT NULL,     -- planned / drilled / cancelled
+    capex_wan          REAL,              -- 钻完井投资（万元），空则取配置默认值
+    data_source        TEXT NOT NULL
+);
+
+-- 单元资产账面价值（财务台账）：产量法折耗与减值测试
+CREATE TABLE IF NOT EXISTS unit_asset_book (
+    unit_id              TEXT NOT NULL,
+    as_of                TEXT NOT NULL,   -- 期末评估基准日
+    opening_nbv_wan      REAL,            -- 期初资产净值（万元）；空 = 由上期期末滚动
+    capex_additions_wan  REAL NOT NULL,   -- 本期资本化投入（万元）
+    data_source          TEXT NOT NULL,
+    PRIMARY KEY (unit_id, as_of)
+);
+
+-- 开发与经营指标评分锚点方案（内置方案来自 conf/indicators.yaml，可另存为自定义方案）
+CREATE TABLE IF NOT EXISTS indicator_profile (
+    profile_id   TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    description  TEXT,
+    spec_json    TEXT NOT NULL,
+    is_builtin   INTEGER NOT NULL DEFAULT 0,
+    is_default   INTEGER NOT NULL DEFAULT 0,
+    updated_at   TEXT
+);
+
+-- 数据导入批次：记录本批写入的主键与被替换的旧行，支持撤销
+CREATE TABLE IF NOT EXISTS import_batch (
+    batch_id      TEXT PRIMARY KEY,
+    import_type   TEXT NOT NULL,
+    filename      TEXT,
+    n_rows        INTEGER,
+    summary_json  TEXT,
+    keys_json     TEXT,
+    replaced_json TEXT,
+    status        TEXT NOT NULL,      -- active / reverted
+    created_at    TEXT,
+    reverted_at   TEXT
+);
+
 -- 历史评估成果：每期、每单元、每价格情景、每个构成一行。对账时直接取上期入库结果
 CREATE TABLE IF NOT EXISTS sec_eval_record (
     as_of          TEXT NOT NULL,

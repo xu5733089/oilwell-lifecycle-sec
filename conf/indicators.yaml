@@ -6,6 +6,9 @@
 # 锚点是示例值，按合成数据的开发方式（致密油水平井压裂投产，初期递减快、储采比低）标定；
 # 常规注水开发油田的递减率与储采比锚点完全不同，正式使用须由开发与经营部门按本油田水平重新标定。
 version: "i1"
+# 内置方案：上面的锚点即"致密油水平井（示例）"方案；profiles 里是其它内置方案，只覆盖与之不同的锚点。
+# 界面（系统 · 指标口径）可在内置方案基础上另存为自定义方案，自定义方案存库，不改本文件。
+base_profile: {id: "tight_oil", name: "致密油水平井（示例）", description: "压裂投产、初期递减快、储采比低"}
 indicators:
   natural_decline_pct:            {name: "自然递减率", group: development, unit: "%", good: 20, bad: 45, weight: 1.5}
   comprehensive_decline_pct:      {name: "综合递减率", group: development, unit: "%", good: 15, bad: 40, weight: 1.0}
@@ -22,3 +25,20 @@ indicators:
 groups:
   development: "开发指标"
   operation: "经营指标"
+profiles:
+  waterflood:
+    name: "常规注水油田（示例）"
+    description: "注水开发中后期：递减缓、含水高、储采比高；锚点为示例值，须按本油田水平标定"
+    anchors:
+      natural_decline_pct:            {good: 8,   bad: 20}
+      comprehensive_decline_pct:      {good: 5,   bad: 15}
+      water_cut_pct:                  {good: 85,  bad: 97}
+      water_cut_rise_pct:             {good: 0,   bad: 3}
+      open_well_rate_pct:             {good: 92,  bad: 75}
+      measure_effective_rate_pct:     {good: 85,  bad: 50}
+      reserve_production_ratio:       {good: 12,  bad: 6}
+      production_plan_attainment_pct: {good: 100, bad: 90}
+      new_well_plan_attainment_pct:   {good: 100, bad: 75}
+      opex_usd_per_t:                 {good: 150, bad: 380}
+      net_revenue_usd_per_t:          {good: 420, bad: 250}
+      profit_usd_per_t:               {good: 220, bad: 20}

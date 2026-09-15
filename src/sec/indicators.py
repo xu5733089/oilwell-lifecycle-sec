@@ -4,7 +4,8 @@
 """
 from __future__ import annotations
 
-from typing import Dict, Optional
+import math
+from typing import Dict, List, Optional
 
 
 def _pct(a: Optional[float], b: Optional[float]) -> Optional[float]:
@@ -36,6 +37,48 @@ def compute(*, production_t: float, plan_production_t: Optional[float],
         net_revenue_usd_per_t=float(net_revenue_usd_per_t),
         profit_usd_per_t=(None if opex_t is None else float(net_revenue_usd_per_t - opex_t)),
     )
+
+
+def validate_spec(spec: Dict, reference: Dict) -> List[str]:
+    """锚点方案校验：指标集合须与内置口径一致（算法只会算这些指标），锚点为数值且优值≠差值，权重非负。"""
+    errors: List[str] = []
+    ind = (spec or {}).get("indicators") or {}
+    ref = reference["indicators"]
+    missing, extra = sorted(set(ref) - set(ind)), sorted(set(ind) - set(ref))
+    if missing:
+        errors.append("缺少指标：" + "、".join(ref[k]["name"] for k in missing))
+    if extra:
+        errors.append("未知指标：" + "、".join(extra))
+    groups: Dict[str, float] = {}
+    for key, s in ind.items():
+        if key not in ref:
+            continue
+        name = ref[key]["name"]
+        try:
+            good, bad, weight = float(s["good"]), float(s["bad"]), float(s.get("weight", 0))
+        except (KeyError, TypeError, ValueError):
+            errors.append(f"{name}：优值锚点、差值锚点、权重须为数值")
+            continue
+        if not all(map(math.isfinite, (good, bad, weight))):
+            errors.append(f"{name}：锚点与权重须为有限数值")
+        elif good == bad:
+            errors.append(f"{name}：优值锚点与差值锚点不能相等")
+        if weight < 0:
+            errors.append(f"{name}：权重不能为负")
+        groups[ref[key]["group"]] = groups.get(ref[key]["group"], 0.0) + max(weight, 0.0)
+    for g, w in groups.items():
+        if w <= 0:
+            errors.append(f"{reference.get('groups', {}).get(g, g)}：组内权重之和须大于 0")
+    return errors
+
+
+def normalize_spec(spec: Dict, reference: Dict) -> Dict:
+    """只保留可调的锚点与权重；名称、分组、单位一律取内置口径，防止被改名混淆。"""
+    ind = {}
+    for key, r in reference["indicators"].items():
+        s = spec["indicators"][key]
+        ind[key] = dict(r, good=float(s["good"]), bad=float(s["bad"]), weight=float(s["weight"]))
+    return dict(version=reference.get("version"), indicators=ind, groups=dict(reference.get("groups", {})))
 
 
 def score(values: Dict[str, Optional[float]], spec: Dict) -> Dict:

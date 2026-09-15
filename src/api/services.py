@@ -27,6 +27,7 @@ from ..sec import checklist as sec_checklist
 from ..sec import classify as sec_classify
 from ..sec import composition as sec_composition
 from ..sec import economics
+from ..sec import finance
 from ..sec import indicators as sec_indicators
 from ..sec import reconcile as sec_reconcile
 
@@ -78,7 +79,8 @@ def reset_cache() -> None:
     _rf_reference.cache_clear()
     _well_agg.cache_clear()
     for f in (_units, _monthly, _events, _codes, _new_wells, _new_well_model_estimates, _evaluate,
-              _eval_fingerprint):
+              _eval_fingerprint, _locations, _producing_xy, _first_prod_map, _asset_book,
+              _unit_depletion_chain, _indicator_periods):
         f.cache_clear()
     _FIT_CACHE.clear()
     for w in _CACHED:
@@ -702,6 +704,7 @@ def _eval_fingerprint() -> str:
         db.read_df("SELECT COUNT(*) AS n, MAX(dt) AS dt FROM well_event").to_json(),
         su.to_json(), uw.sort_values(list(uw.columns)).to_json(),
         _tables()["master"].sort_values("well_id").to_json(),
+        json.dumps(_locations(), sort_keys=True, ensure_ascii=False, default=str),
     ] + [(root / f).read_text(encoding="utf-8") for f in SNAPSHOT_SOURCES]
     h = hashlib.sha1()
     for p in parts:
@@ -780,15 +783,63 @@ def _compute_evaluation(unit_id: str, as_of: str, deck: str, scenario: str) -> D
     master = _tables()["master"]
     mon = _monthly()
     cfg = _su()
-    qe = economics.economic_limit_rate(deck, scenario, opex_factor=float(u["opex_factor"]))["q_econ"]
+    econ = economics.economic_limit_rate(deck, scenario, opex_factor=float(u["opex_factor"]))
+    qe = econ["q_econ"]
     ev = sec_composition.evaluate_unit(
         monthly=mon[mon["well_id"].isin(ids)], master=master[master["well_id"].isin(ids)],
         events=_events(), new_wells=_new_wells(as_of), as_of=as_of, q_econ_well=qe,
         period_months=cfg["period_months"], measure_cfg=cfg["measure"],
         min_fit_months=cfg["decline"]["min_fit_months"],
         type_curve_min_history=cfg["type_curve"]["min_history_months"],
-        model_estimates=_new_well_model_estimates(as_of), fit_cache=_FIT_CACHE)
+        model_estimates=_new_well_model_estimates(as_of), fit_cache=_FIT_CACHE,
+        category_cfg=_category_cfg(unit_id, as_of, econ))
     return json.loads(json.dumps(ev, ensure_ascii=False, default=_json_default))
+
+
+def _records(df: pd.DataFrame) -> List[Dict]:
+    return df.astype(object).where(df.notna(), None).to_dict("records")
+
+
+@functools.lru_cache(maxsize=1)
+def _locations() -> List[Dict]:
+    """部署井位表（老库没有这张表时补建后为空）。"""
+    _snapshot_ready()
+    try:
+        return _records(db.read_df("SELECT * FROM unit_location ORDER BY location_id"))
+    except Exception:
+        return []
+
+
+@functools.lru_cache(maxsize=8)
+def _producing_xy(as_of: str) -> List[List[float]]:
+    """基准日在产井（近 3 个月有产量）的坐标 —— PUD 连续性判定的依据，不限单元、不限层系。"""
+    end = str(as_of)[:7]
+    lo = workload.idx_to_ym(workload.ym_to_idx(end) - 2)
+    mon = _monthly()
+    ids = set(mon[(mon["ym"] >= lo) & (mon["ym"] <= end) & (mon["oil_t"] > 0)]["well_id"])
+    m = _tables()["master"]
+    m = m[m["well_id"].isin(ids)]
+    return m[["x_off", "y_off"]].astype(float).values.tolist()
+
+
+@functools.lru_cache(maxsize=1)
+def _first_prod_map() -> Dict[str, str]:
+    m = _tables()["master"]
+    return dict(zip(m["well_id"], m["first_prod_date"].astype(str)))
+
+
+def _category_cfg(unit_id: str, as_of: str, econ: Dict) -> Dict:
+    cfg = _su()
+    fin = cfg["finance"]
+    netrev = float(econ["net_revenue_usd_per_tonne"])
+    return dict(
+        pdnp=dict(max_shut_in_months=cfg["pdnp"]["max_shut_in_months"],
+                  # 复产费用折成吨数：剩余可采的净收入须覆盖复产作业费
+                  restart_min_t=float(fin["restart_cost_wan"]) * 1e4 / float(fin["fx_cny_per_usd"]) / max(netrev, 1e-9)),
+        pud=cfg["pud"], locations=[r for r in _locations() if r["unit_id"] == unit_id],
+        producing_xy=_producing_xy(str(as_of)), drilled_first_prod=_first_prod_map(),
+        net_revenue_usd_per_t=netrev, opex_per_well_month_usd=float(econ["opex_per_well_month_usd"]),
+        fx_cny_per_usd=float(fin["fx_cny_per_usd"]), default_capex_wan=float(fin["pud_capex_wan"]))
 
 
 def _composition_frame(unit_ids, as_of: str, deck: str, since_ym: str, start_ym: str) -> pd.DataFrame:
@@ -879,6 +930,10 @@ def unit_sec_composition(scope: str, as_of: str = "2026-12-31", scenario: str = 
         economics=dict(price_usd_bbl=econ["price_usd_bbl"], q_econ_t_per_d=_r(econ["q_econ"]),
                        opex_per_well_month_usd=econ["opex_per_well_month_usd"],
                        note="单井经济极限为基准成本口径，各单元另乘自身成本系数"),
+        proved=dict(pdp_t=_r(total, 1),
+                    pdnp_t=_r(sum((ev.get("pdnp") or {}).get("reserves_t", 0.0) for ev in evs), 1),
+                    pud_t=_r(sum((ev.get("pud") or {}).get("reserves_t", 0.0) for ev in evs), 1),
+                    total_t=_r(sum(ev.get("total_proved_t", ev["total_t"]) for ev in evs), 1)),
         aggregation_note=None if sc["level"] == "unit" else
         "采油厂/公司结果为下属单元相加；各单元已证实储量取低值，相加为保守口径")
 
@@ -1041,7 +1096,7 @@ def _reconcile_values(unit_id: str, fa: str, fdeck: str, ta: str, tdeck: str, sc
     vals = {row["key"]: row["value"] for row in r["table"]}
     vals.pop("closing", None)
     vals["closing"] = r["closing_reported"]
-    return vals
+    return vals, r["category_change_detail"]
 
 
 @cached_service
@@ -1055,6 +1110,16 @@ def unit_reconcile(scope: str, from_as_of: str = "2025-12-31", to_as_of: str = "
         raise KernelError(f"期初基准日 {fa} 须早于期末基准日 {ta}")
     _scenario(tdeck, scenario)
     per_unit = {u: _reconcile_values(u, fa, fdeck, ta, tdeck, scenario) for u in sc["unit_ids"]}
+    detail = dict(n_reactivated=0, reactivated_t=0.0, n_shut_in=0, shut_in_t=0.0, reactivated=[], shut_in=[])
+    for u, (_, det) in per_unit.items():
+        for k in ("n_reactivated", "reactivated_t", "n_shut_in", "shut_in_t"):
+            detail[k] += det[k]
+        for k in ("reactivated", "shut_in"):
+            detail[k] += [dict(well_code=_code(w), unit_id=u, value_t=_r(v, 1)) for w, v in det[k]]
+    for k in ("reactivated", "shut_in"):
+        detail[k] = sorted(detail[k], key=lambda x: -abs(x["value_t"] or 0))[:10]
+    pdnp_close = float(sum((_evaluate(u, ta, tdeck, scenario).get("pdnp") or {}).get("reserves_t", 0.0)
+                           for u in sc["unit_ids"]))
 
     # 历史评估成果管理：上期结果已入库就用入库值做期初（差额进技术修订），否则按上期数据截面重算
     stored = db.read_df("SELECT unit_id, reserves_t FROM sec_eval_record WHERE as_of = ? "
@@ -1064,7 +1129,7 @@ def unit_reconcile(scope: str, from_as_of: str = "2025-12-31", to_as_of: str = "
     keys = [k for k, _, _ in sec_reconcile.ROWS]
     values = {k: 0.0 for k in keys}
     closing = 0.0
-    for u, v in per_unit.items():
+    for u, (v, _) in per_unit.items():
         if opening_source == "入库记录":
             v = dict(v, opening=float(stored[u]))
             v["technical_revision"] = v["closing"] - sum(v[k] for k in keys if k != "technical_revision")
@@ -1080,11 +1145,15 @@ def unit_reconcile(scope: str, from_as_of: str = "2025-12-31", to_as_of: str = "
                 table=[dict(r, value=_r(r["value"], 1)) for r in tab["table"]],
                 closing_calculated=tab["closing_calculated"], closing_reported=tab["closing_reported"],
                 difference=tab["difference"], balanced=tab["balanced"], unit="t",
-                depletion_rate_pct=_r(100 * prod / (closing + prod), 2) if closing + prod > 0 else None,
-                depletion_note="产量法折耗率 = 本期产量 /（期末已证实已开发储量 + 本期产量）；"
-                               "折耗额还需资产账面价值，本平台不掌握",
+                depletion_rate_pct=_r(100 * prod / (closing + pdnp_close + prod), 2)
+                if closing + pdnp_close + prod > 0 else None,
+                pdnp_closing_t=_r(pdnp_close, 1),
+                category_change_detail=dict(detail, reactivated_t=_r(detail["reactivated_t"], 1),
+                                            shut_in_t=_r(detail["shut_in_t"], 1)),
+                depletion_note="产量法折耗率 = 本期产量 /（期末证实已开发储量 PDP + PDNP + 本期产量）；"
+                               "折耗额与减值见\"折耗与减值\"",
                 note="技术修订为轧差项（与 20-F 的 revisions of previous estimates 口径一致）；"
-                     "合成数据不含复产与 PUD 转 PDP 记录，类别调整计 0")
+                     "类别调整 = 停产井复产转入 − 在产井停井转出，PUD 钻井转化按提采新井计入")
 
 
 @cached_service
@@ -1172,7 +1241,8 @@ def unit_change_attribution(scope: str, from_as_of: str = "2025-12-31",
 
     sort_key = {"wells": lambda e: -(e.get("reserves_t") or 0),
                 "measures": lambda e: -abs(e.get("inc_eur_t") or 0),
-                "wells_rate_change": lambda e: e.get("rate_change_t_per_d") or 0}
+                "wells_rate_change": lambda e: e.get("rate_change_t_per_d") or 0,
+                "category": lambda e: -abs(e.get("reserves_t") or 0)}
     drivers = []
     for d in merged.values():
         if d["evidence_kind"] == "economics":
@@ -1202,12 +1272,10 @@ def unit_change_attribution(scope: str, from_as_of: str = "2025-12-31",
                 note="占比为各行项绝对值占全部行项绝对值之和；技术修订列出两期间日产降幅最大的老井")
 
 
-@cached_service
-def unit_indicators(scope: str, as_of_list="2025-12-31,2026-12-31",
-                    trace_id: Optional[str] = None) -> Dict:
-    """开发与经营指标及评分（运行监控雷达图），多个基准日并列对比。"""
+@functools.lru_cache(maxsize=64)
+def _indicator_periods(scope: str, dates: Tuple[str, ...]) -> Tuple[Dict, List[Dict]]:
+    """各期指标原始值（不含评分）。评分锚点可随方案切换，值只算一次。"""
     sc = _scope(scope)
-    dates = as_of_list.replace("，", ",").split(",") if isinstance(as_of_list, str) else list(as_of_list)
     cfg = _su()
     su, _ = _units()
     info = su.set_index("unit_id")
@@ -1217,7 +1285,6 @@ def unit_indicators(scope: str, as_of_list="2025-12-31,2026-12-31",
     uw = _units()[1].set_index("well_id")["unit_id"]
     mon_all = _monthly()
     mon_all = mon_all[mon_all["well_id"].isin(ids)]
-    spec = indicator_spec()
     periods = []
     for a in dates:
         a, deck = _as_of(a.strip())
@@ -1231,9 +1298,9 @@ def unit_indicators(scope: str, as_of_list="2025-12-31,2026-12-31",
 
         def water_cut(end: str) -> Optional[float]:
             lo = workload.idx_to_ym(workload.ym_to_idx(end) - 2)
-            s = mon_all[(mon_all["ym"] >= lo) & (mon_all["ym"] <= end)]
-            liquid = s["water_m3"].sum() + s["oil_t"].sum() / cfg["oil_density_t_per_m3"]
-            return float(100 * s["water_m3"].sum() / liquid) if liquid > 0 else None
+            s_ = mon_all[(mon_all["ym"] >= lo) & (mon_all["ym"] <= end)]
+            liquid = s_["water_m3"].sum() + s_["oil_t"].sum() / cfg["oil_density_t_per_m3"]
+            return float(100 * s_["water_m3"].sum() / liquid) if liquid > 0 else None
 
         effects = [e for u in sc["unit_ids"] for e in _evaluate(u, a, deck, "sec")["measures"]
                    if e["in_period"] and e["status"] == "ok"]
@@ -1261,15 +1328,368 @@ def unit_indicators(scope: str, as_of_list="2025-12-31,2026-12-31",
             producing_well_months=well_months,
             opex_per_well_month_usd=(opex_total / well_months) if well_months else 0.0,
             net_revenue_usd_per_t=economics.economic_limit_rate(deck)["net_revenue_usd_per_tonne"])
-        scored = sec_indicators.score(values, spec)
-        periods.append(dict(as_of=a, period_start_ym=start_ym, period_end_ym=end_ym,
-                            indicators=[dict(r, value=_r(r["value"], 2), score=_r(r["score"], 1))
-                                        for r in scored["indicators"]],
-                            groups=[dict(g, score=_r(g["score"], 1)) for g in scored["groups"]]))
-    return dict(**_env(trace_id), scope=_scope_out(sc), periods=periods,
-                scoring="得分 = (值 − 差值锚点) / (优值锚点 − 差值锚点) × 100，截断到 0~100；"
-                        "分组综合分为组内加权平均。锚点见 conf/indicators.yaml",
-                indicator_def_version=spec.get("version"))
+        periods.append(dict(as_of=a, period_start_ym=start_ym, period_end_ym=end_ym, values=values))
+    return _scope_out(sc), periods
+
+
+def _dates_arg(as_of_list) -> Tuple[str, ...]:
+    dates = as_of_list.replace("，", ",").split(",") if isinstance(as_of_list, str) else list(as_of_list)
+    return tuple(str(d).strip() for d in dates if str(d).strip())
+
+
+def _score_periods(periods: List[Dict], spec: Dict) -> List[Dict]:
+    out = []
+    for p in periods:
+        scored = sec_indicators.score(p["values"], spec)
+        out.append(dict(as_of=p["as_of"], period_start_ym=p["period_start_ym"], period_end_ym=p["period_end_ym"],
+                        indicators=[dict(r, value=_r(r["value"], 2), score=_r(r["score"], 1)) for r in scored["indicators"]],
+                        groups=[dict(g, score=_r(g["score"], 1)) for g in scored["groups"]]))
+    return out
+
+
+SCORING_TEXT = ("得分 = (值 − 差值锚点) / (优值锚点 − 差值锚点) × 100，截断到 0~100；分组综合分为组内加权平均。")
+
+
+def unit_indicators(scope: str, as_of_list="2025-12-31,2026-12-31", profile: Optional[str] = None,
+                    trace_id: Optional[str] = None) -> Dict:
+    """开发与经营指标及评分（运行监控），多个基准日并列对比；profile 为锚点方案 id，默认取默认方案。"""
+    prof = _profile(profile)
+    scope_out, periods = _indicator_periods(str(scope), _dates_arg(as_of_list))
+    return dict(**_env(trace_id), scope=scope_out, periods=_score_periods(periods, prof["spec"]),
+                profile=dict(profile_id=prof["profile_id"], name=prof["name"], is_builtin=prof["is_builtin"]),
+                scoring=SCORING_TEXT + f"锚点方案：{prof['name']}",
+                indicator_def_version=prof["spec"].get("version"))
+
+
+def preview_indicator_scores(scope: str, spec: Dict, as_of_list="2025-12-31,2026-12-31",
+                             trace_id: Optional[str] = None) -> Dict:
+    """未保存锚点的实时预览：校验通过才打分，不写库。"""
+    errors = sec_indicators.validate_spec(spec, _reference_spec())
+    if errors:
+        raise KernelError("锚点方案不合法：" + "；".join(errors))
+    scope_out, periods = _indicator_periods(str(scope), _dates_arg(as_of_list))
+    return dict(**_env(trace_id), scope=scope_out,
+                periods=_score_periods(periods, sec_indicators.normalize_spec(spec, _reference_spec())),
+                scoring=SCORING_TEXT + "（预览，未保存）")
+
+
+# ---- 锚点方案管理（配置写入：走 HTTP 并记审计，不注册为智能体工具）----
+def _reference_spec() -> Dict:
+    spec = indicator_spec()
+    return dict(version=spec.get("version"), indicators=spec["indicators"], groups=spec.get("groups", {}))
+
+
+def _builtin_profiles() -> Dict[str, Dict]:
+    spec, ref = indicator_spec(), _reference_spec()
+    base = spec.get("base_profile") or dict(id="builtin", name="内置口径", description="")
+    out = {base["id"]: dict(name=base["name"], description=base.get("description", ""), spec=ref)}
+    for pid, pr in (spec.get("profiles") or {}).items():
+        ind = {k: dict(v, **(pr.get("anchors") or {}).get(k, {})) for k, v in ref["indicators"].items()}
+        out[pid] = dict(name=pr["name"], description=pr.get("description", ""), spec=dict(ref, indicators=ind))
+    return out
+
+
+def _ensure_profiles() -> None:
+    _snapshot_ready()
+    builtins = _builtin_profiles()
+    have = db.read_df("SELECT profile_id, is_default FROM indicator_profile")
+    with db.connect() as conn:
+        for pid, pr in builtins.items():
+            if pid not in set(have["profile_id"]):
+                conn.execute("INSERT INTO indicator_profile (profile_id, name, description, spec_json, is_builtin, "
+                             "is_default, updated_at) VALUES (?, ?, ?, ?, 1, 0, ?)",
+                             (pid, pr["name"], pr["description"], json.dumps(pr["spec"], ensure_ascii=False), trace.now_iso()))
+        if not int(have["is_default"].sum() if len(have) else 0):
+            conn.execute("UPDATE indicator_profile SET is_default = CASE WHEN profile_id = ? THEN 1 ELSE 0 END",
+                         (next(iter(builtins)),))
+
+
+def _profile_row(r: Dict) -> Dict:
+    return dict(profile_id=r["profile_id"], name=r["name"], description=r["description"] or "",
+                is_builtin=bool(r["is_builtin"]), is_default=bool(r["is_default"]), updated_at=r["updated_at"],
+                spec=json.loads(r["spec_json"]))
+
+
+def _profile(profile_id: Optional[str] = None) -> Dict:
+    _ensure_profiles()
+    df = db.read_df("SELECT * FROM indicator_profile")
+    hit = df[df["profile_id"] == profile_id] if profile_id else df[df["is_default"] == 1]
+    if hit.empty:
+        raise KernelError(f"锚点方案 {profile_id!r} 不存在，可选：{'、'.join(df['profile_id'])}")
+    return _profile_row(_records(hit)[0])
+
+
+def list_indicator_profiles(trace_id: Optional[str] = None) -> Dict:
+    _ensure_profiles()
+    rows = [_profile_row(r) for r in _records(db.read_df("SELECT * FROM indicator_profile ORDER BY is_builtin DESC, name"))]
+    return dict(**_env(trace_id), profiles=rows, reference=_reference_spec(), scoring=SCORING_TEXT)
+
+
+def save_indicator_profile(name: str, spec: Dict, profile_id: Optional[str] = None, description: str = "",
+                           trace_id: Optional[str] = None) -> Dict:
+    _ensure_profiles()
+    name = str(name or "").strip()
+    if not name:
+        raise KernelError("请填写方案名称")
+    if profile_id:
+        cur = _profile(profile_id)
+        if cur["is_builtin"]:
+            raise KernelError("内置方案不可修改，请另存为新方案")
+    errors = sec_indicators.validate_spec(spec, _reference_spec())
+    if errors:
+        raise KernelError("锚点方案不合法：" + "；".join(errors))
+    norm = sec_indicators.normalize_spec(spec, _reference_spec())
+    pid = profile_id or "custom_" + trace.new_trace_id("p")[2:12]
+    tid = trace_id or trace.new_trace_id("cfg")
+    with db.connect() as conn:
+        conn.execute("INSERT INTO indicator_profile (profile_id, name, description, spec_json, is_builtin, is_default, updated_at) "
+                     "VALUES (?, ?, ?, ?, 0, 0, ?) ON CONFLICT(profile_id) DO UPDATE SET name = excluded.name, "
+                     "description = excluded.description, spec_json = excluded.spec_json, updated_at = excluded.updated_at",
+                     (pid, name, str(description or ""), json.dumps(norm, ensure_ascii=False), trace.now_iso()))
+    trace.audit(tid, "user", "indicator_profile:save", dict(profile_id=pid, name=name))
+    return dict(**_env(tid), profile=_profile(pid))
+
+
+def delete_indicator_profile(profile_id: str, trace_id: Optional[str] = None) -> Dict:
+    cur = _profile(profile_id)
+    if cur["is_builtin"]:
+        raise KernelError("内置方案不可删除")
+    tid = trace_id or trace.new_trace_id("cfg")
+    with db.connect() as conn:
+        conn.execute("DELETE FROM indicator_profile WHERE profile_id = ?", (profile_id,))
+    _ensure_profiles()                                 # 删掉的是默认方案时，默认回到内置方案
+    trace.audit(tid, "user", "indicator_profile:delete", dict(profile_id=profile_id))
+    return dict(**_env(tid), deleted=profile_id)
+
+
+def set_default_indicator_profile(profile_id: str, trace_id: Optional[str] = None) -> Dict:
+    _profile(profile_id)
+    tid = trace_id or trace.new_trace_id("cfg")
+    with db.connect() as conn:
+        conn.execute("UPDATE indicator_profile SET is_default = CASE WHEN profile_id = ? THEN 1 ELSE 0 END", (profile_id,))
+    trace.audit(tid, "user", "indicator_profile:default", dict(profile_id=profile_id))
+    return dict(**_env(tid), profile=_profile(profile_id))
+
+
+# ---- 证实储量类别：PDP / PDNP / PUD ----
+PUD_STATUS_CN = sec_composition.PUD_STATUS_CN
+PDNP_STATUS_CN = {"booked": "计入 PDNP", "long_shut_in": "长停井，不计入", "uneconomic": "不足以覆盖复产费用，不计入",
+                  "no_fit": "停产前资料不足，不计入", "no_history": "无生产记录"}
+
+
+@cached_service
+def unit_proved_categories(scope: str, as_of: str = "2026-12-31", scenario: str = "sec",
+                           trace_id: Optional[str] = None) -> Dict:
+    """证实储量类别：已开发已生产（PDP）、已开发未生产（PDNP，停产井）、未开发（PUD，部署井位），含逐井判定依据。"""
+    sc = _scope(scope)
+    as_of, deck = _as_of(as_of)
+    sp = _scenario(deck, scenario)
+    su, _ = _units()
+    names = su.set_index("unit_id")["unit_name"]
+    cfg = _su()
+    evs = {u: _evaluate(u, as_of, deck, scenario) for u in sc["unit_ids"]}
+    pdp = sum(ev["total_t"] for ev in evs.values())
+    pdnp = sum(ev["pdnp"]["reserves_t"] for ev in evs.values())
+    pud = sum(ev["pud"]["reserves_t"] for ev in evs.values())
+    total = pdp + pdnp + pud
+    n_pdp = sum(ev["old_base"]["n_evaluated"] + len(ev["new_wells"]) for ev in evs.values())
+    n_pdnp = sum(ev["pdnp"]["n_booked"] for ev in evs.values())
+    n_pud = sum(ev["pud"]["n_booked"] for ev in evs.values())
+    share = lambda v: _r(100 * v / total, 1) if total else None
+    wells, locs, pdnp_counts, pud_counts, warnings = [], [], {}, {}, []
+    as_of_ym = as_of[:7]
+    for u, ev in evs.items():
+        for w in ev["pdnp"]["wells"]:
+            pdnp_counts[w["pdnp_status"]] = pdnp_counts.get(w["pdnp_status"], 0) + 1
+            wells.append(dict(well_code=_code(w["well_id"]), unit_id=u, last_prod_ym=w["last_prod_ym"],
+                              shut_in_months=w["shut_in_months"], status=w["pdnp_status"],
+                              status_cn=PDNP_STATUS_CN.get(w["pdnp_status"], w["pdnp_status"]),
+                              reserves_t=_r(w["reserves_t"], 1), estimate_t=_r(w["estimate_t"], 1),
+                              rate_at_shut_t_per_d=_r(w["rate_at_shut_t_per_d"], 2)))
+        for l in ev["pud"]["locations"]:
+            pud_counts[l["status"]] = pud_counts.get(l["status"], 0) + 1
+            locs.append(dict(location_id=l["location_id"], unit_id=u, x_off=_r(l["x_off"], 1), y_off=_r(l["y_off"], 1),
+                             planned_drill_ym=l["planned_drill_ym"], first_booked_as_of=l["first_booked_as_of"],
+                             deadline_ym=l["deadline_ym"], years_to_deadline=_r(l["years_to_deadline"], 1),
+                             n_producing_neighbors=l["n_producing_neighbors"], capex_wan=_r(l["capex_wan"], 1),
+                             cash_wan=_r(l["cash_wan"], 1), estimate_t=_r(l["estimate_t"], 1),
+                             reserves_t=_r(l["reserves_t"], 1), status=l["status"], status_cn=l["status_cn"],
+                             new_booking=l["new_booking"],
+                             drilled_well_code=_code(l["drilled_well_id"]) if l["drilled_well_id"] else None))
+            if l["status"] == "booked" and l["years_to_deadline"] <= 1:
+                warnings.append(dict(kind="pud_deadline", location_id=l["location_id"], unit_id=u,
+                                     text=f"{l['location_id']}（{u}）距五年期限不足 1 年（期限 {l['deadline_ym']}），计划钻井 {l['planned_drill_ym']}"))
+            elif l["status"] == "booked" and l["planned_drill_ym"] < as_of_ym:
+                warnings.append(dict(kind="pud_overdue", location_id=l["location_id"], unit_id=u,
+                                     text=f"{l['location_id']}（{u}）计划钻井 {l['planned_drill_ym']} 已过期，尚未钻井"))
+    wells.sort(key=lambda w: (w["status"] != "booked", -(w["reserves_t"] or 0)))
+    order = ["booked", "not_booked_yet", "expired_5yr", "beyond_5yr", "not_certain", "uneconomic", "no_type_curve",
+             "drilled", "cancelled"]
+    locs.sort(key=lambda l: (order.index(l["status"]) if l["status"] in order else 99, l["location_id"]))
+    pc, pd_ = cfg["pud"], cfg["pdnp"]
+    return dict(
+        **_env(trace_id), scope=_scope_out(sc), as_of=as_of, scenario=scenario, scenario_label=sp["label"],
+        price_deck_id=deck, total_proved_t=_r(total, 1),
+        categories=[dict(key="PDP", name="已开发已生产（PDP）", reserves_t=_r(pdp, 1), share_pct=share(pdp), n_items=n_pdp,
+                         basis="新-老-措构成合计"),
+                    dict(key="PDNP", name="已开发未生产（PDNP）", reserves_t=_r(pdnp, 1), share_pct=share(pdnp), n_items=n_pdnp,
+                         basis="停产井按停产前递减续算，扣除长停与不经济"),
+                    dict(key="PUD", name="未开发（PUD）", reserves_t=_r(pud, 1), share_pct=share(pud), n_items=n_pud,
+                         basis="部署井位按类型曲线折减取值，须满足连续性、五年规则与经济性")],
+        units=[dict(unit_id=u, unit_name=names[u], PDP=_r(ev["total_t"], 1), PDNP=_r(ev["pdnp"]["reserves_t"], 1),
+                    PUD=_r(ev["pud"]["reserves_t"], 1), total_t=_r(ev["total_proved_t"], 1)) for u, ev in evs.items()],
+        pdnp=dict(n_booked=n_pdnp, reserves_t=_r(pdnp, 1), n_by_status=pdnp_counts, wells=wells,
+                  rule=f"近 3 个月无产量的老井；停产不超过 {pd_['max_shut_in_months']} 个月，"
+                       f"停产前数据递减续算的剩余可采须覆盖复产作业费"),
+        pud=dict(n_booked=n_pud, reserves_t=_r(pud, 1), n_by_status=pud_counts, locations=locs,
+                 rule=f"半径 {pc['radius_m']} m 内当期在产井不少于 {pc['min_producing_neighbors']} 口；"
+                      f"首次入账后 {pc['horizon_years']} 年内钻井；类型曲线 × {pc['certainty_factor']} 截到经济极限，"
+                      f"净现金流须覆盖钻完井投资"),
+        warnings=warnings,
+        note="PDNP 与 PUD 按单元各自的经济极限取值；采油厂/公司为下属单元相加")
+
+
+@cached_service
+def unit_category_tracking(scope: str, from_as_of: str = "2025-12-31", to_as_of: str = "2026-12-31",
+                           scenario: str = "sec", trace_id: Optional[str] = None) -> Dict:
+    """证实储量类别滚动：PUD 转化率与五年规则移出、PDNP 复产与新增停产，及 PDP 对账里的类别调整。"""
+    sc = _scope(scope)
+    fa, fdeck = _as_of(from_as_of)
+    ta, tdeck = _as_of(to_as_of)
+    if fa >= ta:
+        raise KernelError(f"期初基准日 {fa} 须早于期末基准日 {ta}")
+    _scenario(tdeck, scenario)
+    agg: Dict[str, Dict] = {}
+    lists: Dict[str, List] = {k: [] for k in ("converted", "expired", "removed", "new", "reactivated", "pdnp_removed", "pdnp_new")}
+    for u in sc["unit_ids"]:
+        rf = sec_composition.category_rollforward(_evaluate(u, fa, fdeck, scenario), _evaluate(u, ta, tdeck, scenario))
+        for cat in ("pud", "pdnp"):
+            if cat not in rf:
+                continue
+            a = agg.setdefault(cat, dict(table={}, counts={}))
+            for row in rf[cat]["table"]:
+                t = a["table"].setdefault(row["key"], dict(key=row["key"], item=row["item"], value=0.0))
+                t["value"] += row["value"]
+            for k, v in rf[cat].items():
+                if k.startswith("n_"):
+                    a["counts"][k] = a["counts"].get(k, 0) + v
+        if "pud" in rf:
+            for k in ("converted", "expired", "removed", "new"):
+                lists[k] += [dict(location_id=x, unit_id=u) for x in rf["pud"][k]]
+        if "pdnp" in rf:
+            for k, dst in (("reactivated", "reactivated"), ("removed", "pdnp_removed"), ("new", "pdnp_new")):
+                lists[dst] += [dict(well_code=_code(w), unit_id=u) for w in rf["pdnp"][k]]
+
+    def finish(cat: str) -> Optional[Dict]:
+        if cat not in agg:
+            return None
+        rows = [dict(r, value=_r(r["value"], 1)) for r in agg[cat]["table"].values()]
+        vals = {r["key"]: r["value"] for r in rows}
+        diff = (vals["closing"] or 0) - (vals["opening"] or 0) - sum((r["value"] or 0) for r in rows if r["key"] not in ("opening", "closing"))
+        return dict(table=rows, balanced=abs(diff) <= 1.0, difference=_r(diff, 1), **agg[cat]["counts"])
+
+    pud, pdnp = finish("pud"), finish("pdnp")
+    if pud:
+        pud["conversion_rate_pct"] = _r(100 * pud["n_converted"] / pud["n_opening"], 1) if pud["n_opening"] else None
+        pud["years_to_convert_at_pace"] = _r(pud["n_closing"] / pud["n_converted"], 1) if pud["n_converted"] else None
+        pud.update(converted=lists["converted"], expired=lists["expired"], removed=lists["removed"], new=lists["new"])
+    if pdnp:
+        pdnp.update(reactivated=lists["reactivated"], removed=lists["pdnp_removed"], new=lists["pdnp_new"])
+    recon = unit_reconcile(scope, from_as_of=fa, to_as_of=ta, scenario=scenario)
+    return dict(**_env(trace_id), scope=_scope_out(sc), from_as_of=fa, to_as_of=ta, scenario=scenario,
+                pud=pud, pdnp=pdnp, pdp_category_change=recon["category_change_detail"],
+                note="PUD 转化率 = 期初已入账井位中本期钻井转为已开发的比例；按目前节奏消化期末 PUD 所需年数 = 期末入账井位数 / 本期转化数。"
+                     "五年规则：井位须在首次入账后五年内钻井，逾期未钻即移出")
+
+
+# ---- 折耗与减值 ----
+@functools.lru_cache(maxsize=1)
+def _asset_book() -> Dict[Tuple[str, str], Dict]:
+    _snapshot_ready()
+    try:
+        df = db.read_df("SELECT * FROM unit_asset_book")
+    except Exception:
+        return {}
+    return {(r["unit_id"], str(r["as_of"])): r for r in _records(df)}
+
+
+@functools.lru_cache(maxsize=64)
+def _unit_depletion_chain(unit_id: str, as_of: str) -> Dict:
+    """单个单元一期的折耗与减值。期初净值缺失时取上一评估期的期末净值（逐期滚动）。"""
+    dates = [str(d) for d in _su()["evaluation_dates"]]
+    k = dates.index(as_of)
+    fin = _su()["finance"]
+    book = _asset_book().get((unit_id, as_of))
+    if book is None:
+        raise KernelError(f"缺少 {unit_id} 在 {as_of} 的资产账面记录，请在 系统 · 数据导入 导入单元资产账面价值")
+    if book["opening_nbv_wan"] is not None:
+        opening, source = float(book["opening_nbv_wan"]), "财务台账"
+    elif k > 0:
+        opening, source = _unit_depletion_chain(unit_id, dates[k - 1])["closing_nbv_wan"], f"上期（{dates[k - 1]}）期末净值滚动"
+    else:
+        raise KernelError(f"{unit_id} 首个评估期 {as_of} 缺少期初资产净值")
+    deck = economics.deck_for(as_of)
+    su, _ = _units()
+    opex_factor = float(su.set_index("unit_id").loc[unit_id, "opex_factor"])
+    ev = _evaluate(unit_id, as_of, deck, "sec")
+    pd_t = float(ev["total_t"] + ev["pdnp"]["reserves_t"])
+    dep = finance.depletion(opening, float(book["capex_additions_wan"]), float(ev["production_in_period_t"]), pd_t)
+    try:
+        ev_imp = _evaluate(unit_id, as_of, deck, "impairment")
+        econ = economics.economic_limit_rate(deck, "impairment", opex_factor=opex_factor)
+    except KeyError as exc:
+        raise KernelError(str(exc.args[0])) from None
+    pd_imp = float(ev_imp["total_t"] + ev_imp["pdnp"]["reserves_t"])
+    end = as_of[:7]
+    lo = workload.idx_to_ym(workload.ym_to_idx(end) - 2)
+    mon = _monthly()
+    recent = mon[mon["well_id"].isin(set(_wells_of([unit_id]))) & (mon["ym"] >= lo) & (mon["ym"] <= end)]
+    monthly_rate = float(recent["oil_t"].sum()) / 3.0
+    well_months = float((recent["days_on"] > 0).sum()) / 3.0
+    opex_t = well_months * float(econ["opex_per_well_month_usd"]) / monthly_rate if monthly_rate > 0 else 0.0
+    rec = finance.recoverable_amount(pd_imp, monthly_rate, float(econ["net_revenue_usd_per_tonne"]), opex_t,
+                                     float(fin["discount_rate"]), float(fin["fx_cny_per_usd"]))
+    imp = finance.impairment(dep["carrying_after_depletion_wan"], rec["recoverable_wan"])
+    return dict(unit_id=unit_id, as_of=as_of, opening_nbv_wan=opening, opening_source=source,
+                capex_additions_wan=float(book["capex_additions_wan"]), production_t=float(ev["production_in_period_t"]),
+                pdp_t=float(ev["total_t"]), pdnp_t=float(ev["pdnp"]["reserves_t"]), pd_reserves_t=pd_t,
+                depletion_rate_pct=100 * dep["depletion_rate"] if dep["depletion_rate"] is not None else None,
+                depletion_wan=dep["depletion_wan"], carrying_wan=dep["carrying_after_depletion_wan"],
+                impairment_price_usd_bbl=float(econ["price_usd_bbl"]), pd_reserves_impairment_t=pd_imp,
+                monthly_rate_t=monthly_rate, opex_usd_per_t=opex_t, net_revenue_usd_per_t=float(econ["net_revenue_usd_per_tonne"]),
+                cash_usd_per_t=rec["cash_usd_per_t"], life_years=rec["life_years"], recoverable_wan=rec["recoverable_wan"],
+                recoverable_note=rec["note"], **imp)
+
+
+@cached_service
+def unit_depletion_impairment(scope: str, as_of: str = "2026-12-31", trace_id: Optional[str] = None) -> Dict:
+    """产量法折耗额与减值测试：期初净值 + 本期投入 → 折耗 → 折耗后账面价值与减值测试价下的可收回金额比较。"""
+    sc = _scope(scope)
+    as_of, deck = _as_of(as_of)
+    su, _ = _units()
+    names = su.set_index("unit_id")["unit_name"]
+    fin = _su()["finance"]
+    rows = [_unit_depletion_chain(u, as_of) for u in sc["unit_ids"]]
+    tot = {k: float(sum(r[k] for r in rows)) for k in ("opening_nbv_wan", "capex_additions_wan", "production_t",
+                                                     "pd_reserves_t", "depletion_wan", "carrying_wan", "recoverable_wan",
+                                                     "impairment_wan", "closing_nbv_wan")}
+    rate = 100 * tot["production_t"] / (tot["pd_reserves_t"] + tot["production_t"]) if tot["pd_reserves_t"] + tot["production_t"] > 0 else None
+    rnd = lambda r: {k: (_r(v, 2 if k.endswith("_pct") or k.endswith("_per_t") or k.endswith("bbl") or k == "life_years" else 1)
+                         if isinstance(v, float) else v) for k, v in r.items()}
+    return dict(**_env(trace_id), scope=_scope_out(sc), as_of=as_of, price_deck_id=deck, currency="万元",
+                summary=dict(rnd(tot), depletion_rate_pct=_r(rate, 2), n_units=len(rows),
+                             n_impaired=sum(1 for r in rows if r["impaired"]),
+                             headroom_pct=_r(100 * (tot["recoverable_wan"] - tot["carrying_wan"]) / tot["carrying_wan"], 1)
+                             if tot["carrying_wan"] > 0 else None),
+                units=[dict(rnd(r), unit_name=names[r["unit_id"]]) for r in rows],
+                assumptions=dict(fx_cny_per_usd=fin["fx_cny_per_usd"], discount_rate=fin["discount_rate"],
+                                 impairment_scenario=economics.scenario_params(deck, "impairment")["label"]),
+                method=["产量法折耗率 = 本期产量 /（期末证实已开发储量 PDP + PDNP + 本期产量），储量取 SEC 价口径",
+                        "折耗额 =（期初资产净值 + 本期资本化投入）× 折耗率",
+                        "可收回金额 = 减值测试价下证实已开发储量的未来净现金流折现值：单元指数递减剖面，初始月产取近 3 个月月均，"
+                        "吨油净现金流 = 吨油净收入 − 吨油操作成本",
+                        "减值额 = max(0，折耗后账面价值 − 可收回金额)；减值后期末净值作为下一期期初"],
+                note="简化口径：不含 PUD 未来投资与弃置费，剖面为单元级指数递减；采油厂/公司为下属单元相加（减值按单元逐个测试后相加）")
 
 
 def persist_unit_evaluation(as_of: str, scenarios=SCENARIOS) -> Dict:

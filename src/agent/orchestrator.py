@@ -391,6 +391,58 @@ def _unit_template(results: Dict) -> List[str]:
         L += _citations_line(results)
         L += ["", DISCLAIMER, ""]
 
+    pc = results.get("unit_proved_categories")
+    if pc:
+        from ..api.services import PDNP_STATUS_CN, PUD_STATUS_CN
+        L.append(f"【证实储量类别】{_scope_title(pc)}｜基准日 {pc['as_of']}｜{pc['scenario_label']}")
+        L.append(f"  · 证实储量合计 {_fmt(pc['total_proved_t'], 't')}")
+        for c in pc["categories"]:
+            L.append(f"  · {c['name']}：{_fmt(c['reserves_t'], 't')}，占 {_fmt(c['share_pct'])}%（{c['n_items']} 项；{c['basis']}）")
+        p = pc["pud"]
+        L.append(f"  · PUD 规则：{p['rule']}")
+        L.append("  · 部署井位判定：" + "，".join(f"{PUD_STATUS_CN.get(k, k)} {v} 个" for k, v in p["n_by_status"].items()))
+        d = pc["pdnp"]
+        L.append(f"  · PDNP 规则：{d['rule']}")
+        L.append("  · 停产井判定：" + "，".join(f"{PDNP_STATUS_CN.get(k, k)} {v} 口" for k, v in d["n_by_status"].items()))
+        for w in pc["warnings"][:3]:
+            L.append(f"  · 预警：{w['text']}")
+    tr = results.get("unit_category_tracking")
+    if tr and tr.get("pud"):
+        u = tr["pud"]
+        L.append(f"【PUD 滚动】{tr['from_as_of']} → {tr['to_as_of']}：期初入账 {u['n_opening']} 个井位，钻井转化 {u['n_converted']} 个"
+                 f"（转化率 {_fmt(u['conversion_rate_pct'])}%），五年规则移出 {u['n_expired']} 个，其他移出 {u['n_removed']} 个，"
+                 f"新入账 {u['n_new']} 个，期末 {u['n_closing']} 个")
+        for r in u["table"]:
+            L.append(f"    - {r['item']}：{_fmt(r['value'], 't')}")
+    if tr and tr.get("pdnp"):
+        d = tr["pdnp"]
+        L.append(f"【PDNP 滚动】期初 {d['n_opening']} 口，复产转 PDP {d['n_reactivated']} 口，移出 {d['n_removed']} 口，"
+                 f"新增停产 {d['n_new']} 口，期末 {d['n_closing']} 口")
+        for r in d["table"]:
+            L.append(f"    - {r['item']}：{_fmt(r['value'], 't')}")
+    if pc or tr:
+        L.append(f"  · 说明：{(tr or pc)['note']}")
+        L += _citations_line(results)
+        L += ["", DISCLAIMER, ""]
+
+    dp = results.get("unit_depletion_impairment")
+    if dp:
+        sm, asm = dp["summary"], dp["assumptions"]
+        L.append(f"【折耗与减值】{_scope_title(dp)}｜基准日 {dp['as_of']}｜金额单位 {dp['currency']}")
+        L.append(f"  · 期初资产净值 {_fmt(sm['opening_nbv_wan'])}，本期资本化投入 {_fmt(sm['capex_additions_wan'])}；"
+                 f"产量法折耗率 {_fmt(sm['depletion_rate_pct'])}%，折耗额 {_fmt(sm['depletion_wan'])}")
+        L.append(f"  · 折耗后账面价值 {_fmt(sm['carrying_wan'])}；可收回金额 {_fmt(sm['recoverable_wan'])}"
+                 f"（{asm['impairment_scenario']}，折现率 {_fmt(asm['discount_rate'])}）；"
+                 f"减值额 {_fmt(sm['impairment_wan'])}，{sm['n_impaired']} 个单元减值；期末净值 {_fmt(sm['closing_nbv_wan'])}")
+        imp = [x for x in dp["units"] if x["impaired"]]
+        if imp:
+            L.append("  · 减值单元：" + "；".join(
+                f"{x['unit_id']} 减值 {_fmt(x['impairment_wan'])}（账面 {_fmt(x['carrying_wan'])}，可收回 {_fmt(x['recoverable_wan'])}）"
+                for x in imp))
+        L.append("  · 口径：" + "；".join(dp["method"]))
+        L.append(f"  · 说明：{dp['note']}")
+        L.append("")
+
     s = results.get("unit_sensitivity")
     if s:
         L.append(f"【PDP 敏感性】{_scope_title(s)}｜基准日 {s['as_of']}｜{s['scenario_label']}，"
@@ -414,6 +466,8 @@ def _evidence_text(kind: str, e: Dict) -> str:
     if kind == "economics":
         return (f"油价 {_fmt(e['price_open_usd_bbl'])} → {_fmt(e['price_close_usd_bbl'])} USD/bbl，"
                 f"单井经济极限 {_fmt(e['q_econ_open_t_per_d'])} → {_fmt(e['q_econ_close_t_per_d'])} t/d")
+    if kind == "category":
+        return f"{e['well_code']} {e['change']} {_fmt(e['reserves_t'], 't')}"
     if kind == "wells_rate_change":
         return (f"{e['well_code']} 日产 {_fmt(e['rate_open_t_per_d'])} → {_fmt(e['rate_close_t_per_d'])} t/d，"
                 f"含水 {_fmt(e['water_cut_open_pct'])}% → {_fmt(e['water_cut_close_pct'])}%")

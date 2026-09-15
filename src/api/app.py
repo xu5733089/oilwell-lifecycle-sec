@@ -17,7 +17,7 @@ from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
@@ -124,6 +124,27 @@ async def unit_report(request: Request):
                         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 
+async def import_template(request: Request):
+    from ..ingest import imports
+    t = request.query_params.get("type", "")
+    try:
+        data = imports.template(t)
+    except S.KernelError as exc:
+        return _err(str(exc), 422)
+    from urllib.parse import quote
+    name = quote(f"{imports.TYPES[t]['title']}_导入模板.csv")
+    return Response(data, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename*=utf-8''{name}"})
+
+
+def _imports(name: str):
+    def fn(**kw):
+        from ..ingest import imports
+        return getattr(imports, name)(**kw)
+    fn.__name__ = name
+    return fn
+
+
 WEB_DIR = Path(__file__).resolve().parents[2] / "web"
 
 
@@ -173,6 +194,21 @@ routes = [
           methods=["POST", "GET"]),
     Route(f"{API}/unit/indicators", _wrap(S.unit_indicators, "scope"), methods=["POST", "GET"]),
     Route(f"{API}/unit/report", unit_report, methods=["POST", "GET"]),
+    Route(f"{API}/unit/categories", _wrap(S.unit_proved_categories, "scope"), methods=["POST", "GET"]),
+    Route(f"{API}/unit/category-tracking", _wrap(S.unit_category_tracking, "scope"), methods=["POST", "GET"]),
+    Route(f"{API}/unit/depletion", _wrap(S.unit_depletion_impairment, "scope"), methods=["POST", "GET"]),
+    # 配置与业务数据写入：只走 HTTP 与界面、记审计日志，不注册为智能体工具（智能体一律只读）
+    Route(f"{API}/indicator-profiles", _wrap(S.list_indicator_profiles), methods=["GET"]),
+    Route(f"{API}/indicator-profiles/preview", _wrap(S.preview_indicator_scores, "scope", "spec"), methods=["POST"]),
+    Route(f"{API}/indicator-profiles/save", _wrap(S.save_indicator_profile, "name", "spec"), methods=["POST"]),
+    Route(f"{API}/indicator-profiles/delete", _wrap(S.delete_indicator_profile, "profile_id"), methods=["POST"]),
+    Route(f"{API}/indicator-profiles/default", _wrap(S.set_default_indicator_profile, "profile_id"), methods=["POST"]),
+    Route(f"{API}/import/types", _wrap(_imports("types")), methods=["GET"]),
+    Route(f"{API}/import/template", import_template, methods=["GET"]),
+    Route(f"{API}/import/preview", _wrap(_imports("preview"), "import_type", "filename", "content_base64"), methods=["POST"]),
+    Route(f"{API}/import/commit", _wrap(_imports("commit"), "import_type", "filename", "content_base64"), methods=["POST"]),
+    Route(f"{API}/import/undo", _wrap(_imports("undo"), "batch_id"), methods=["POST"]),
+    Route(f"{API}/import/history", _wrap(_imports("history")), methods=["GET"]),
 ]
 
 if WEB_DIR.exists():

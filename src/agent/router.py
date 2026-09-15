@@ -61,11 +61,19 @@ INTENTS: Dict[str, Dict] = {
     "unit_sensitivity": dict(
         desc="油价、成本、产量、递减率对 PDP 的敏感性",
         kw=["敏感", "油价影响", "成本影响", "情景分析"]),
+    "unit_categories": dict(
+        desc="证实储量类别：PDP、PDNP（停产井）、PUD（部署井位），PUD 转化率、五年规则、停产井复产",
+        kw=["pud", "pdnp", "未开发", "已开发未生产", "停产井", "停井", "复产", "转化率", "五年规则",
+            "5年规则", "部署井位", "储量类别"]),
+    "unit_depletion": dict(
+        desc="产量法折耗额与减值测试：资产净值、可收回金额、减值额",
+        kw=["折耗额", "折耗金额", "减值额", "减值损失", "计提减值", "资产减值", "是否减值", "会不会减值",
+            "资产净值", "账面价值", "可收回"]),
     "fallback": dict(desc="无法归类，需澄清", kw=[]),
 }
 
 UNIT_INTENTS = {"unit_composition", "unit_decline", "measure_effect", "new_well_identify",
-                "unit_reconcile", "unit_sensitivity"}
+                "unit_reconcile", "unit_sensitivity", "unit_categories", "unit_depletion"}
 # 句子里出现这些词，评估对象就是单元 / 采油厂 / 公司，只在单元级意图里选；
 # 否则只在单井意图里选 —— "递减率"对一口井是递减分析，对一个单元是老井基础递减。
 SCOPE_TOKENS = ["sec_", "单元", "采油厂", "公司", "全油田"]
@@ -75,7 +83,7 @@ UNIT_DEFAULT_KW = ["储量", "pdp", "sec", "已证实"]
 # 平票时按"下游优先"取舍：一句话里同时出现"做完递减分析"和"能不能进已证实储量"，
 # 用户真正要的是后者。上游分析是手段，下游结论才是目的。
 # 单元级意图里具体的优先于笼统的："措施增储构成"问的是措施，不是整体构成。
-PRIORITY = ["unit_reconcile", "unit_sensitivity", "unit_decline", "measure_effect",
+PRIORITY = ["unit_categories", "unit_depletion", "unit_reconcile", "unit_sensitivity", "unit_decline", "measure_effect",
             "new_well_identify", "unit_composition",
             "gen_report", "sec_screen", "cross_check", "estimate_reserves",
             "fit_dca", "predict_lifecycle", "find_analogs", "query_well"]

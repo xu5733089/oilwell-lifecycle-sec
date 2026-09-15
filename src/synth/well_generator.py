@@ -168,8 +168,11 @@ def _ooip_t(st: Dict[str, float], cp: Dict[str, float]) -> float:
     return float(pv * RHO_OIL / BO)
 
 
-def _daily_series(rng, lat, hist_days, first_prod: date, aux: np.random.Generator):
-    """生成日度产量/压力序列，并返回真值 p_peak 与 eur。"""
+def _daily_series(rng, lat, hist_days, first_prod: date, aux: np.random.Generator, shut=None):
+    """生成日度产量/压力序列，并返回真值 p_peak 与 eur。
+
+    shut=(停井起始日序, 复产日序)：停井期间不出油，复产后接着停井前的递减继续（停井期间地层不采出）。
+    """
     d = np.arange(1, hist_days + 1, dtype=float)
     tm = d / 30.4
 
@@ -207,6 +210,15 @@ def _daily_series(rng, lat, hist_days, first_prod: date, aux: np.random.Generato
         ev_truth.append(dict(day_index=wo_day, event_type=kind, gain=gain, d_inc_month=d_inc,
                              ramp_month=spec["ramp"], q_base_t_per_d=q_base_at))
 
+    if shut is not None and wo_day is None:
+        s_day, e_day = shut
+        q_shift = q.copy()
+        q_shift[s_day:e_day] = 0.0
+        q_shift[e_day:] = q[s_day:hist_days - (e_day - s_day)]
+        q = q_shift
+    else:
+        shut = None
+
     noise = rng.lognormal(0.0, 0.065, size=q.shape)          # 计量噪声
     q = np.maximum(q * noise, 0.0)
 
@@ -216,6 +228,8 @@ def _daily_series(rng, lat, hist_days, first_prod: date, aux: np.random.Generato
         s = int(rng.uniform(30, max(31, hist_days - 20)))
         e = min(hist_days, s + int(rng.uniform(3, 16)))
         hours[s:e] = 0.0
+    if shut is not None:
+        hours[shut[0]:shut[1]] = 0.0
     q = np.where(hours > 0, q, 0.0)
 
     degraded = rng.random() < 0.05      # 5% 劣质井：长时间断记录，用于验证质量门禁确实在拦人
@@ -291,7 +305,8 @@ def _eur_truth(lat: Dict[str, float]) -> float:
 
 def _build_well(i: int, rng: np.random.Generator, aux: np.random.Generator, cohort: str,
                 blocks: List[str], layers: List[str], block_origin: Dict, field: Dict,
-                end: date, extension_frac: float) -> Dict:
+                end: date, extension_frac: float, reactivation_frac: float = 0.0,
+                rng_shut: np.random.Generator = None) -> Dict:
     """造一口井。cohort=base 时主随机数流的抽取顺序与旧版逐项一致。"""
     wid = f"SYN{i + 1:04d}"
     block = str(rng.choice(blocks))
@@ -332,7 +347,16 @@ def _build_well(i: int, rng: np.random.Generator, aux: np.random.Generator, coho
         x_off = float(ox + aux.uniform(-2500, 2500))
         y_off = float(oy + (1.0 if cohort == "base" else -1.0) * aux.uniform(*EXT_Y_OFFSET))
 
-    pdf, evs, p_peak, ev_truth, inc_monthly = _daily_series(rng, lat, hist, first_prod, aux)
+    # 停井后复产（让"PDNP 转 PDP"有数据）：独立随机数流，只改变被抽中的井
+    shut = None
+    if (rng_shut is not None and cohort == "base" and not is_new and status == "producing"
+            and hist > 900 and rng_shut.random() < reactivation_frac):
+        gap = int(rng_shut.uniform(120, 420))                 # 停井 4 ~ 14 个月
+        e_day = hist - int(rng_shut.uniform(60, 560))          # 复产日距数据截止日 2 ~ 18 个月
+        if e_day - gap > 600:
+            shut = (e_day - gap, e_day)
+
+    pdf, evs, p_peak, ev_truth, inc_monthly = _daily_series(rng, lat, hist, first_prod, aux, shut)
     pdf.insert(0, "well_id", wid)
 
     master = dict(
@@ -369,7 +393,7 @@ def _build_well(i: int, rng: np.random.Generator, aux: np.random.Generator, coho
 
 def generate(n_wells: int, seed: int, blocks: List[str], layers: List[str],
              data_end: str = "2026-12-31", recent_frac: float = 0.10,
-             extension_frac: float = 0.25) -> Dict[str, pd.DataFrame]:
+             extension_frac: float = 0.25, reactivation_frac: float = 0.0) -> Dict[str, pd.DataFrame]:
     rng = np.random.default_rng(seed)
     end = date.fromisoformat(str(data_end))
 
@@ -383,9 +407,10 @@ def generate(n_wells: int, seed: int, blocks: List[str], layers: List[str],
 
     wells: List[Dict] = []
     common = dict(blocks=blocks, layers=layers, block_origin=block_origin, field=field,
-                  end=end, extension_frac=extension_frac)
+                  end=end, extension_frac=extension_frac, reactivation_frac=reactivation_frac)
     for i in range(n_wells):
-        wells.append(_build_well(i, rng, np.random.default_rng([seed, i, 17]), "base", **common))
+        wells.append(_build_well(i, rng, np.random.default_rng([seed, i, 17]), "base",
+                                 rng_shut=np.random.default_rng([seed, i, 23]), **common))
     # 上一评估年投产的批次用独立随机数流追加在后面，不扰动前面的井
     rng_recent = np.random.default_rng([seed, 99991])
     for j in range(int(round(n_wells * recent_frac))):

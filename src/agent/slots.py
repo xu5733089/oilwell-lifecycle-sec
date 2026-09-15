@@ -42,6 +42,8 @@ SCHEMA: Dict[str, Dict[str, List[str]]] = {
     "new_well_identify": dict(required=["scope"], optional=["as_of"]),
     "unit_reconcile":    dict(required=["scope"], optional=["from_as_of", "to_as_of", "scenario"]),
     "unit_sensitivity":  dict(required=["scope"], optional=["as_of", "scenario"]),
+    "unit_categories":   dict(required=["scope"], optional=["as_of", "from_as_of", "to_as_of", "scenario"]),
+    "unit_depletion":    dict(required=["scope"], optional=["as_of"]),
     "fallback":          dict(required=[], optional=[]),
 }
 

@@ -27,12 +27,14 @@
   --side-w:220px; --nav-active:#1F5BB8;
   /* 顺序色（量级）：单一色相由浅到深，井位图"累产 / 投产年份"着色用 */
   --seq:#C9DBF2,#8FB5E6,#5689D0,#2D63B0,#173F7C;
+  /* 证实储量类别色：与构成身份色分开，避免"同色不同义" */
+  --k1:#1F7FB8; --k2:#A67A0C; --k3:#7E57C2;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
   --bg:#0B111A; --surface:#141B26; --surface-2:#19212E; --sunk:#111823;
   --ink:#E3E8EF; --ink-2:#B8C2D0; --muted:#8A95A6; --rule:#283243; --rule-soft:#1F2835;
   --brand:#5B8FE0; --brand-hover:#77A3E8; --brand-soft:#1A2940; --brand-ink:#8DB3EE;
-  --side:#080D15; --side-2:#131C2B; --side-ink:#C5CEDB; --side-muted:#707D92; --side-rule:#172133; --nav-active:#2A5AA8; --seq:#1F3050,#2A5591,#3F7CC8,#74A8E6,#B9D6F8;
+  --side:#080D15; --side-2:#131C2B; --side-ink:#C5CEDB; --side-muted:#707D92; --side-rule:#172133; --nav-active:#2A5AA8; --seq:#1F3050,#2A5591,#3F7CC8,#74A8E6,#B9D6F8; --k1:#3A9AD6; --k2:#B8891F; --k3:#9A7AD8;
   /* dark 模式单独选步，不是自动翻转 */
   --c1:#19A492; --c2:#D2731F; --c3:#5468C4; --c4:#D0679B;
   --c1-soft:#2F6F66;
@@ -46,7 +48,7 @@
   --bg:#0B111A; --surface:#141B26; --surface-2:#19212E; --sunk:#111823;
   --ink:#E3E8EF; --ink-2:#B8C2D0; --muted:#8A95A6; --rule:#283243; --rule-soft:#1F2835;
   --brand:#5B8FE0; --brand-hover:#77A3E8; --brand-soft:#1A2940; --brand-ink:#8DB3EE;
-  --side:#080D15; --side-2:#131C2B; --side-ink:#C5CEDB; --side-muted:#707D92; --side-rule:#172133; --nav-active:#2A5AA8; --seq:#1F3050,#2A5591,#3F7CC8,#74A8E6,#B9D6F8;
+  --side:#080D15; --side-2:#131C2B; --side-ink:#C5CEDB; --side-muted:#707D92; --side-rule:#172133; --nav-active:#2A5AA8; --seq:#1F3050,#2A5591,#3F7CC8,#74A8E6,#B9D6F8; --k1:#3A9AD6; --k2:#B8891F; --k3:#9A7AD8;
   --c1:#19A492; --c2:#D2731F; --c3:#5468C4; --c4:#D0679B;
   --c1-soft:#2F6F66;
   --neutral:#566070; --neutral-2:#8A95A5;
@@ -387,6 +389,41 @@ a.btn{text-decoration:none}
 .mlegend .ramp{width:120px;height:8px;border-radius:4px}
 .mlegend .muted{font-size:11.5px}
 
+/* ── 表单：锚点编辑、上传 ── */
+.row.c-side{grid-template-columns:minmax(230px,290px) minmax(0,1fr)}
+@media(max-width:1180px){.row.c-side{grid-template-columns:minmax(0,1fr)}}
+.dt input.num-in{width:74px;height:28px;text-align:right;font-variant-numeric:tabular-nums;padding:0 6px}
+.dt input.num-in.changed{background:var(--brand-soft);border-color:var(--brand)}
+.dt input.num-in.bad{border-color:var(--crit);box-shadow:0 0 0 3px var(--crit-bg)}
+.plist{padding:6px 0}
+.plist button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;text-align:left;background:none;border:0;
+  border-left:3px solid transparent;padding:10px 14px;cursor:pointer;font-family:inherit;color:var(--ink);transition:background-color .15s}
+.plist button:hover{background:var(--surface-2)}
+.plist button[aria-current="true"]{background:var(--brand-soft);border-left-color:var(--brand)}
+.plist .pn{font-size:13px;font-weight:500;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.plist .pd{font-size:11.5px;color:var(--muted);line-height:1.5}
+.drop{display:flex;flex-direction:column;align-items:center;gap:6px;border:1.5px dashed var(--rule);border-radius:6px;padding:24px 16px;
+  text-align:center;color:var(--muted);cursor:pointer;transition:border-color .15s,background-color .15s,color .15s}
+.drop svg.ic{width:22px;height:22px}
+.drop:hover,.drop.over{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink)}
+.drop b{color:var(--ink)}
+.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.types button{text-align:left;border:1px solid var(--rule);border-radius:6px;background:var(--surface);padding:11px 13px;cursor:pointer;
+  font-family:inherit;color:var(--ink);transition:border-color .15s,background-color .15s}
+.types button:hover{border-color:var(--brand)}
+.types button[aria-pressed="true"]{border-color:var(--brand);background:var(--brand-soft)}
+.types b{display:block;font-size:13px;margin-bottom:3px}
+.types span{font-size:12px;color:var(--muted);line-height:1.5}
+.steps{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:12px}
+.steps .on{color:var(--brand-ink);font-weight:600}
+.box{border:1px solid var(--rule);border-radius:6px;margin-top:12px;overflow:hidden}
+.box-h{padding:8px 12px;font-size:12.5px;font-weight:600;background:var(--surface-2);border-bottom:1px solid var(--rule-soft)}
+.method{margin:0 0 12px;padding-left:18px;font-size:12.5px;line-height:1.75;color:var(--ink-2)}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:12px}
+.fields label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.wmap .xloc{cursor:help;transition:opacity .3s}
+.wmap .xloc:hover{stroke-width:2.8px}
+
 /* ── 窄屏：侧栏变为顶部横向导航 ── */
 @media(max-width:900px){
   .side{position:static;width:auto;flex-direction:column}
@@ -442,7 +479,11 @@ a.btn{text-decoration:none}
     <section class="view" id="tab-well" hidden></section>
     <section class="view" id="tab-reserves" hidden></section>
     <section class="view" id="tab-unit" hidden></section>
+    <section class="view" id="tab-categories" hidden></section>
+    <section class="view" id="tab-depletion" hidden></section>
     <section class="view" id="tab-monitor" hidden></section>
+    <section class="view" id="tab-import" hidden></section>
+    <section class="view" id="tab-indicators" hidden></section>
     <section class="view" id="tab-chat" hidden></section>
     <section class="view" id="tab-eval" hidden></section>
   </main>
@@ -475,6 +516,13 @@ const el = (tag, attrs = {}, kids = []) => {
 const fmt = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v))
   ? '—' : Number(v).toLocaleString('zh-CN', { maximumFractionDigits: d });
 const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+async function apiPost(path, body) {
+  const r = await fetch('/api/v1' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({ error: '响应不是合法 JSON' }));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
 
 async function api(path, params) {
   const q = params ? '?' + new URLSearchParams(params) : '';
@@ -694,11 +742,11 @@ function divergingBars(host, rows, unit, opts = {}) {
     svg.appendChild(s_('line', { x1: zero, x2: zero, y1: 2, y2: h - 24, stroke: cssVar('--rule'), 'stroke-width': 1 }));
     rows.forEach((r, i) => {
       const y = i * rowH + 2, cy = y + rowH / 2, bw = Math.max(Math.abs(r.value) / max * half, 1.5);
-      const pos = r.value >= 0, color = opts.color || (pos ? cssVar('--c1') : cssVar('--c2'));
+      const pos = r.value >= 0, color = opts.colorOf ? opts.colorOf(r) : opts.color || (pos ? cssVar('--c1') : cssVar('--c2'));
       svg.appendChild(s_('path', { class: pos ? 'a-right' : 'a-left', style: `--d:${i * 45}ms`, d: barPath(pos ? zero : zero - bw, cy - 6, bw, 12, pos ? 'right' : 'left'), fill: color }));
       svg.appendChild(svgText({ x: labelW - 10, y: cy + 4, 'text-anchor': 'end', fill: cssVar('--ink-2'), 'font-size': FS.label }, r.label));
       svg.appendChild(svgText({ class: 'a-fade', style: `--d:${i * 45 + 320}ms`, x: pos ? zero + bw + 6 : zero - bw - 6, y: cy + 4, 'text-anchor': pos ? 'start' : 'end', fill: cssVar('--muted'), 'font-size': FS.note },
-        (r.value > 0 ? '+' : '') + fmt(r.value, 2) + (opts.suffix || '')));
+        opts.labelOf ? opts.labelOf(r) : (r.value > 0 ? '+' : '') + fmt(r.value, 2) + (opts.suffix || '')));
       const hit = s_('rect', { x: 0, y, width: W, height: rowH, fill: 'transparent' });
       hit.addEventListener('mousemove', ev => showTip(ev, opts.tip ? opts.tip(r) :
         `<b>${r.label}</b><div class="row"><span>该井取值</span><span class="mono">${fmt(r.raw)}</span></div>` +
@@ -773,7 +821,7 @@ function wellMap(host, cfg) {
   const cumS = wells.map(w => Math.sqrt(Math.max(w.cum_oil_t || 0, 0)));
   const cr = [Math.min(...cumS), Math.max(...cumS)];
   const cmax = Math.max(...wells.map(w => w.cum_oil_t || 0)) || 1;
-  const fillOf = (w, i) => st.mode === 'cum' ? rampColor((cumS[i] - cr[0]) / (cr[1] - cr[0] || 1))
+  const fillOf = (w, i) => cfg.fill ? (cfg.fill(w) || cssVar('--neutral')) : st.mode === 'cum' ? rampColor((cumS[i] - cr[0]) / (cr[1] - cr[0] || 1))
     : st.mode === 'year' ? rampColor((yearOf(w) - yr[0]) / (yr[1] - yr[0] || 1))
     : (cfg.colors[w.block] || cssVar('--muted'));
 
@@ -801,7 +849,8 @@ function wellMap(host, cfg) {
   mount(host, W => {
     const H = W < 520 ? 320 : 440, pad = { l: 46, r: 12, t: 10, b: 30 };
     const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
-    const xs = wells.map(w => w.x), ys = wells.map(w => w.y);
+    const xs = wells.map(w => w.x).concat((cfg.extra || []).map(e => e.x));
+    const ys = wells.map(w => w.y).concat((cfg.extra || []).map(e => e.y));
     const ext = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
     const full = { cx: (ext[0] + ext[1]) / 2, cy: (ext[2] + ext[3]) / 2,
       s: Math.min(iw / ((ext[1] - ext[0]) * 1.12 || 1), ih / ((ext[3] - ext[2]) * 1.25 || 1)) };
@@ -851,6 +900,16 @@ function wellMap(host, cfg) {
     const mlabel = svgText({ 'font-size': 11.5, 'font-weight': 600, fill: cssVar('--ink'), 'paint-order': 'stroke',
       stroke: cssVar('--surface'), 'stroke-width': 4, 'stroke-linejoin': 'round' }, '');
     gMark.append(ring, core, mlabel);
+    const gExtra = s_('g');
+    gData.insertBefore(gExtra, gMark);
+    const extras = (cfg.extra || []).map((e, k) => {
+      const node = s_('path', { class: 'xloc a-pop', style: `--d:${900 + Math.min(k, 120) * 5}ms`,
+        fill: e.hollow ? cssVar('--surface') : e.color, stroke: e.color, 'stroke-width': e.hollow ? 1.8 : 1.2 });
+      node.addEventListener('mousemove', ev => { if (!dragMoved) showTip(ev, e.tip); });
+      node.addEventListener('mouseleave', hideTip);
+      gExtra.appendChild(node);
+      return node;
+    });
 
     function placeMark() {
       const code = st.hi || cfg.current, i = wells.findIndex(w => w.well_code === code);
@@ -894,6 +953,10 @@ function wellMap(host, cfg) {
         h.label.setAttribute('y', Math.min(...h.hp.map(p => PY(p[1]))) - 18);
       });
       dots.forEach((c, i) => { c.setAttribute('cx', PX(wells[i].x).toFixed(1)); c.setAttribute('cy', PY(wells[i].y).toFixed(1)); });
+      extras.forEach((node, k) => {
+        const x = PX(cfg.extra[k].x), y = PY(cfg.extra[k].y), r = 6;
+        node.setAttribute('d', `M${x.toFixed(1)},${(y - r).toFixed(1)}L${(x + r).toFixed(1)},${y.toFixed(1)}L${x.toFixed(1)},${(y + r).toFixed(1)}L${(x - r).toFixed(1)},${y.toFixed(1)}Z`);
+      });
       placeMark();
       st.view = { ...v };
     }
@@ -902,7 +965,7 @@ function wellMap(host, cfg) {
       dots.forEach((c, i) => {
         const w = wells[i];
         c.setAttribute('fill', fillOf(w, i));
-        c.setAttribute('fill-opacity', st.mode === 'block' ? (w.is_new ? .95 : .55) : .92);
+        c.setAttribute('fill-opacity', cfg.fill ? .85 : st.mode === 'block' ? (w.is_new ? .95 : .55) : .92);
         c.setAttribute('stroke', w.is_new ? cssVar('--ink') : cssVar('--surface'));
         c.classList.toggle('dim', !!st.focus && w.block !== st.focus);
       });
@@ -1066,7 +1129,8 @@ function hStackedBars(host, cfg) {
 }
 
 /* 瀑布图：期初/期末从零起，行项悬浮在累计值上；数值只标期初、期末和影响最大的两项 */
-function waterfall(host, rows) {
+function waterfall(host, rows, opts = {}) {
+  const unit = opts.unit || 't', cf = opts.compact || compactT;
   mount(host, W => {
     const g = frame(W, 290, { l: 54, r: 10, t: 26, b: 40 });
     const { svg, pad, iw, ih } = g;
@@ -1078,7 +1142,7 @@ function waterfall(host, rows) {
     const vals = steps.flatMap(s => [s.a, s.b]);
     const ymax = (Math.max(...vals, 0) * 1.1) || 1, ymin = Math.min(...vals, 0) * 1.1;
     const Y = v => pad.t + ih - (v - ymin) / (ymax - ymin) * ih;
-    yGrid(g, [ymin, ymax], Y);
+    yGrid(g, [ymin, ymax], Y, cf);
     const band = iw / rows.length, bw = Math.min(24, band * .55);
     const big = steps.filter(s => !s.r.total).sort((p, q) => Math.abs(q.r.value) - Math.abs(p.r.value)).slice(0, 2);
     steps.forEach((s, i) => {
@@ -1091,11 +1155,11 @@ function waterfall(host, rows) {
         band < 62 ? (s.r.tiny || s.r.label) : s.r.label));
       if (s.r.total || big.includes(s))
         svg.appendChild(svgText({ class: 'a-fade', style: `--d:${i * 110 + 360}ms`, x: x + bw / 2, y: up ? top - 6 : top + h + 13, 'text-anchor': 'middle', fill: cssVar('--muted'), 'font-size': FS.note },
-          (s.r.total || s.r.value < 0 ? '' : '+') + compactT(s.r.value)));
+          (s.r.total || s.r.value < 0 ? '' : '+') + cf(s.r.value)));
       const hit = s_('rect', { x: pad.l + i * band, y: pad.t, width: band, height: ih, fill: 'transparent' });
       hit.addEventListener('mousemove', ev => showTip(ev, `<b>${s.r.item}</b>` +
-        `<div class="row"><span>${s.r.total ? '储量' : '变动'}</span><span class="mono">${s.r.total || s.r.value < 0 ? '' : '+'}${fmt(s.r.value, 1)} t</span></div>` +
-        (s.r.total ? '' : `<div class="row"><span>累计</span><span class="mono">${fmt(s.b, 1)} t</span></div>`)));
+        `<div class="row"><span>${s.r.total ? (opts.totalLabel || '储量') : '变动'}</span><span class="mono">${s.r.total || s.r.value < 0 ? '' : '+'}${fmt(s.r.value, 1)} ${unit}</span></div>` +
+        (s.r.total ? '' : `<div class="row"><span>累计</span><span class="mono">${fmt(s.b, 1)} ${unit}</span></div>`)));
       hit.addEventListener('mouseleave', hideTip);
       svg.appendChild(hit);
     });
@@ -1205,7 +1269,11 @@ const ICON = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
   reset: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>',
-  ok: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/>'
+  ok: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/>',
+  pie: '<path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>',
+  coins: '<ellipse cx="9" cy="7" rx="6" ry="3"/><path d="M3 7v5c0 1.7 2.7 3 6 3s6-1.3 6-3V7"/><path d="M9 15v2c0 1.7 2.7 3 6 3s6-1.3 6-3v-5c0-1.7-2.7-3-6-3"/>',
+  upload: '<path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M5 3h14"/>',
+  sliders: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>'
 };
 const icon = name => {
   const t = document.createElement('template');
@@ -1384,6 +1452,18 @@ function subTabs(items, active, onChange) {
   return bar;
 }
 
+/* 分段控件：同一组里互斥的筛选（按钮组，aria-pressed 标出选中项） */
+function segControl(options, active, onChange, label) {
+  const g = el('div', { class: 'seg', role: 'group', 'aria-label': label || '筛选' });
+  options.forEach(([k, text]) => {
+    const b = el('button', { type: 'button', 'aria-pressed': String(k === active), text });
+    b.addEventListener('click', () => { g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); onChange(k); });
+    g.appendChild(b);
+  });
+  return g;
+}
+const box = (title, node) => el('div', { class: 'box' }, [el('div', { class: 'box-h', text: title }), node]);
+
 /* 页头右侧的全局筛选：只写入当前页，异步返回时页面已切走就丢弃 */
 function setCtx(page, nodes) { if (S.page === page) $('#ctx').replaceChildren(...nodes.filter(Boolean)); }
 let _fid = 0;
@@ -1396,7 +1476,8 @@ const ctxField = (label, ctl) => {
    4. 各页面
    ══════════════════════════════════════════════════════════════ */
 const S = { wells: [], overview: null, current: null, page: null, ovBlock: 'all', wl: { q: '', page: 0 },
-  unitSub: 'comp', nwFilter: 'all', tok: { well: 0, reserves: 0, unit: 0, monitor: 0 } };
+  unitSub: 'comp', nwFilter: 'all', locFilter: 'all',
+  tok: { well: 0, reserves: 0, unit: 0, monitor: 0, categories: 0, depletion: 0, profiles: 0 } };
 const BLOCK_COLORS = () => ({ 'GL-A': cssVar('--c1'), 'GL-B': cssVar('--c2'), 'SB-C': cssVar('--c3') });
 const go = name => { location.hash = '#/' + name; };
 function pickWell(code) { S.current = code; }
@@ -1768,6 +1849,7 @@ function evidenceText(kind, e) {
   if (kind === 'wells') return `${e.well_code}（${e.unit_id}）${fmt(e.reserves_t, 0)} t，${e.basis}，投产 ${e.months_on} 个月`;
   if (kind === 'measures') return `${e.well_code}（${e.unit_id}）${e.event_name} ${e.event_ym}，增加可采 ${fmt(e.inc_eur_t, 0)} t`;
   if (kind === 'economics') return `油价 ${fmt(e.price_open_usd_bbl)} → ${fmt(e.price_close_usd_bbl)} USD/bbl，单井经济极限 ${fmt(e.q_econ_open_t_per_d)} → ${fmt(e.q_econ_close_t_per_d)} t/d`;
+  if (kind === 'category') return `${e.well_code}（${e.unit_id}）${e.change} ${fmt(e.reserves_t, 0)} t`;
   if (kind === 'wells_rate_change') return `${e.well_code}（${e.unit_id}）日产 ${fmt(e.rate_open_t_per_d)} → ${fmt(e.rate_close_t_per_d)} t/d，含水 ${fmt(e.water_cut_open_pct, 1)}% → ${fmt(e.water_cut_close_pct, 1)}%`;
   return '';
 }
@@ -1842,7 +1924,8 @@ const UNIT_SUB = {
       }, [legend(series.map(s => ({ name: s.name, color: s.color, kind: 'box' }))), el('figure', {}, plot)]);
     }
 
-    const basis = panel('构成口径', { meta: `PDP 合计 ${fmtT(comp.total_t)}`, flush: true },
+    const basis = panel('构成口径', { meta: `PDP 合计 ${fmtT(comp.total_t)}`, flush: true,
+      actions: comp.proved ? [el('a', { class: 'btn sm', href: '#/categories' }, [icon('pie'), `证实储量合计 ${fmtT(comp.proved.total_t)}（含 PDNP、PUD）`])] : [] },
       table([{ h: '构成', k: 'name', render: r => r._cls ? r.name : el('span', { style: 'display:inline-flex;align-items:center;gap:6px' }, [el('i', { class: 'sw', style: `background:${color[r.key]}` }), r.name]) },
         { h: '剩余可采 (t)', k: 'reserves_t', num: true, d: 0 }, { h: '占比', k: 'share_pct', num: true, render: r => fmt(r.share_pct, 1) + '%' },
         { h: '数量', k: 'n_items', num: true, render: r => r._cls ? '' : `${r.n_items} ${r.key === 'measure' ? '次' : '口'}` },
@@ -1960,12 +2043,20 @@ async function renderMonitor() {
   host.replaceChildren(loading('加载评估单元…'));
   await ensureUnits();
   if (token !== S.tok.monitor || S.page !== 'monitor') return;
-  setCtx('monitor', unitCtx({ date: true, dateLabel: '计划对标基准日' }, renderMonitor));
+  const profs = await softApi('/indicator-profiles');
+  if (token !== S.tok.monitor || S.page !== 'monitor') return;
+  const profSel = profs._error ? null : el('select', { onchange: e => { S.monProfile = e.target.value; renderMonitor(); }, style: 'max-width:220px' },
+    profs.profiles.map(p => el('option', { value: p.profile_id, text: p.name + (p.is_default ? '（默认）' : '') })));
+  if (profSel) {
+    if (!profs.profiles.some(p => p.profile_id === S.monProfile)) S.monProfile = (profs.profiles.find(p => p.is_default) || profs.profiles[0]).profile_id;
+    profSel.value = S.monProfile;
+  }
+  setCtx('monitor', [...unitCtx({ date: true, dateLabel: '计划对标基准日' }, renderMonitor), profSel ? ctxField('指标方案', profSel) : null]);
   host.replaceChildren(loading('汇总中…'));
   const dates = S.units.evaluation_dates;
   const comps = [];
   for (const d of dates) comps.push(await softApi('/unit/composition', { scope: S.scope, as_of: d, scenario: 'sec' }));
-  const [indi, prod] = await Promise.all([softApi('/unit/indicators', { scope: S.scope, as_of_list: dates.join(',') }),
+  const [indi, prod] = await Promise.all([softApi('/unit/indicators', { scope: S.scope, as_of_list: dates.join(','), ...(S.monProfile ? { profile: S.monProfile } : {}) }),
     softApi('/unit/production', { scope: S.scope, as_of: S.asOf })]);
   if (token !== S.tok.monitor) return;
   const C = COMP();
@@ -2001,7 +2092,8 @@ async function renderMonitor() {
     const plot = el('div');
     dumbbell(plot, rows, { aColor: cssVar('--c1-soft'), bColor: cssVar('--c1') });
     const dPanel = panel('开发与经营指标评价', {
-      meta: `${indi.scope.name} · 得分 0 ~ 100`,
+      meta: `${indi.scope.name} · 得分 0 ~ 100 · ${indi.profile.name}`,
+      actions: [el('a', { class: 'btn sm', href: '#/indicators' }, [icon('sliders'), '调整锚点'])],
       note: [indi.scoring + '。', '两期对比用哑铃图而不是雷达图：雷达图的面积随轴的排列顺序变化，读不准差值。']
     }, [legend([{ name: pa.as_of, color: cssVar('--c1-soft'), kind: 'dot' }, { name: pb.as_of, color: cssVar('--c1'), kind: 'dot' }]), el('figure', {}, plot)]);
     const tPanel = panel('指标明细', { meta: `${pb.as_of} 较 ${pa.as_of}`, flush: true },
@@ -2059,6 +2151,504 @@ async function renderMonitor() {
   else out.push(el('div', { class: 'row' }, planPanel));
   if (unitsPanel) out.push(el('div', { class: 'row' }, unitsPanel));
   show(host, ...out);
+}
+
+/* ── SEC 单元 · 证实储量类别跟踪（PDP / PDNP / PUD） ── */
+const CAT = () => [
+  { key: 'PDP', name: '已开发已生产 PDP', color: cssVar('--k1') },
+  { key: 'PDNP', name: '已开发未生产 PDNP', color: cssVar('--k2') },
+  { key: 'PUD', name: '未开发 PUD', color: cssVar('--k3') }];
+const PUD_KIND = { booked: 'ok', drilled: 'brand', expired_5yr: 'crit', beyond_5yr: 'warn', not_certain: 'warn', uneconomic: 'warn' };
+const PDNP_KIND = { booked: 'ok', long_shut_in: 'crit', uneconomic: 'warn' };
+const ROLL_TINY = { opening: '期初', converted: '转开发', expired_5yr: '超五年', removed: '其他移出', revision: '修订', new_booking: '新入账', closing: '期末' };
+
+async function renderCategories() {
+  const host = $('#tab-categories'), token = ++S.tok.categories;
+  host.replaceChildren(loading('加载评估单元…'));
+  await ensureUnits();
+  if (token !== S.tok.categories || S.page !== 'categories') return;
+  setCtx('categories', unitCtx({ date: true, scenario: true }, renderCategories));
+  host.replaceChildren(loading('评估中… 停产井逐井续算、部署井位逐个判定连续性、五年规则与经济性'));
+  const dates = S.units.evaluation_dates, idx = dates.indexOf(S.asOf);
+  const [cat, track] = await Promise.all([
+    softApi('/unit/categories', { scope: S.scope, as_of: S.asOf, scenario: S.scenario }),
+    idx > 0 ? softApi('/unit/category-tracking', { scope: S.scope, from_as_of: dates[idx - 1], to_as_of: S.asOf, scenario: S.scenario })
+      : Promise.resolve({ _error: `${S.asOf} 是首个评估基准日，没有上期结果可滚动` })]);
+  await ensureBase().catch(() => null);
+  if (token !== S.tok.categories) return;
+  if (cat._error) { show(host, alertBar('crit', '类别评估失败', cat._error)); return; }
+  const K = CAT(), color = Object.fromEntries(K.map(k => [k.key, k.color]));
+  const byKey = Object.fromEntries(cat.categories.map(c => [c.key, c]));
+  const pud = track._error ? null : track.pud, pdnpT = track._error ? null : track.pdnp;
+
+  const strip = kpiStrip([
+    { label: `证实储量合计 · ${cat.scenario_label}`, ...tU(cat.total_proved_t), note: 'PDP + PDNP + PUD' },
+    ...K.map(k => ({ label: k.name, sw: k.color, ...tU(byKey[k.key].reserves_t),
+      note: `占 ${fmt(byKey[k.key].share_pct, 1)}% · ${byKey[k.key].n_items} ${k.key === 'PUD' ? '个井位' : '口井'}` })),
+    { label: 'PUD 转化率', value: pud && pud.conversion_rate_pct != null ? fmt(pud.conversion_rate_pct, 1) : '—', unit: pud ? '%' : null,
+      note: pud ? `期初 ${pud.n_opening} 个井位，本期钻井 ${pud.n_converted} 个` : '需要上一期结果' },
+    { label: '五年规则', value: pud ? pud.n_expired : '—', unit: pud ? '个移出' : null,
+      note: cat.warnings.length ? [tag(`${cat.warnings.length} 条预警`, 'warn')] : '无临期井位' }]);
+
+  const unitPlot = el('div');
+  hStackedBars(unitPlot, { rows: cat.units.map(u => ({ label: u.unit_id, tip: `${u.unit_id} ${u.unit_name}`, values: u })), series: K, unit: 't', labelW: 120 });
+  const unitPanel = panel('各单元证实储量类别', {
+    meta: `${cat.scope.name} · 基准日 ${cat.as_of}`,
+    note: cat.categories.map(c => `${c.name}：${c.basis}。`).concat([cat.note + '。']),
+    table: table([{ h: '单元', k: 'unit_id' }, { h: '名称', k: 'unit_name' }, ...K.map(k => ({ h: k.key + ' (t)', k: k.key, num: true, d: 0 })),
+      { h: '合计 (t)', k: 'total_t', num: true, d: 0 }], cat.units, { scroll: true })
+  }, [legend(K.map(k => ({ name: k.name, color: k.color, kind: 'box' }))), el('figure', {}, unitPlot)]);
+
+  let rollPanel;
+  if (!pud) rollPanel = panel('PUD 滚动', { meta: '不可得' }, emptyState(track._error));
+  else {
+    const RC = { opening: cssVar('--neutral'), closing: cssVar('--neutral'), converted: color.PDP, new_booking: color.PUD };
+    const rows = pud.table.map(r => ({ ...r, label: ROLL_TINY[r.key] || r.item, tiny: ROLL_TINY[r.key],
+      total: r.key === 'opening' || r.key === 'closing', color: RC[r.key] || cssVar('--neutral-2') }));
+    const plot = el('div');
+    waterfall(plot, rows);
+    rollPanel = panel('PUD 滚动', {
+      meta: `${track.from_as_of} → ${track.to_as_of}`,
+      actions: [tag(pud.balanced ? '已闭合' : '未闭合', pud.balanced ? 'ok' : 'crit')],
+      note: [track.note + '。', '钻井转化的井位本期起按提采新井计入 PDP（见构成评估）。'],
+      table: table([{ h: '行项', k: 'item' }, { h: '储量 (t)', k: 'value', num: true, d: 0 }], pud.table)
+    }, [legend([{ name: '期初 / 期末', color: cssVar('--neutral'), kind: 'box' }, { name: '钻井转为 PDP', color: color.PDP, kind: 'box' },
+      { name: '新入账', color: color.PUD, kind: 'box' }, { name: '移出与修订', color: cssVar('--neutral-2'), kind: 'box' }]),
+      el('figure', {}, plot),
+      kv([['期初 → 期末井位', `${pud.n_opening} → ${pud.n_closing} 个`],
+        ['本期钻井转化', `${pud.n_converted} 个`], ['五年规则移出 / 其他移出', `${pud.n_expired} / ${pud.n_removed} 个`],
+        ['按目前节奏消化期末 PUD', pud.years_to_convert_at_pace != null ? `约 ${fmt(pud.years_to_convert_at_pace, 1)} 年` : '—']])]);
+  }
+
+  const pdnpSet = new Set(cat.pdnp.wells.filter(w => w.status === 'booked').map(w => w.well_code));
+  const LOC = { booked: [color.PUD, false], not_booked_yet: [color.PUD, true], drilled: [color.PDP, true] };
+  const extra = cat.pud.locations.filter(l => l.status !== 'drilled').map(l => {
+    const [c, hollow] = LOC[l.status] || [cssVar('--neutral-2'), true];
+    return { x: l.x_off, y: l.y_off, color: c, hollow,
+      tip: `<b>${l.location_id}</b>　<span class="mono">${l.unit_id}</span>` +
+        `<div class="row"><span>判定</span><span>${l.status_cn}</span></div>` +
+        `<div class="row"><span>计划钻井</span><span class="mono">${l.planned_drill_ym}</span></div>` +
+        `<div class="row"><span>五年期限</span><span class="mono">${l.deadline_ym}</span></div>` +
+        `<div class="row"><span>周边在产井</span><span class="mono">${l.n_producing_neighbors} 口</span></div>` +
+        `<div class="row"><span>剩余可采</span><span class="mono">${fmt(l.reserves_t, 0)} t</span></div>` };
+  });
+  const mapHost = el('div');
+  if (S.wells.length) wellMap(mapHost, { wells: S.wells, colors: BLOCK_COLORS(), current: null, extra,
+    fill: w => pdnpSet.has(w.well_code) ? color.PDNP : cssVar('--neutral'), onPick: code => { pickWell(code); go('well'); } });
+  const mapPanel = panel('部署井位与停产井', {
+    meta: `${extra.length} 个未钻部署井位 · ${pdnpSet.size} 口 PDNP 停产井`,
+    note: ['菱形为未钻部署井位：实心紫色 = 已入账 PUD；空心紫色 = 尚未入账；空心灰色 = 未入账（超五年、连续性不足、计划晚于五年、不经济）。已钻井位已是生产井，不再单独标出。',
+      '圆点为井：橙色 = 计入 PDNP 的停产井，灰色 = 其它井。坐标已统一偏移。']
+  }, [legend([{ name: '其它井', color: cssVar('--neutral'), kind: 'dot' }, { name: 'PDNP 停产井', color: color.PDNP, kind: 'dot' },
+    { name: 'PUD 已入账', color: color.PUD, kind: 'box' }, { name: '未入账井位（空心）', color: cssVar('--neutral-2'), kind: 'box' }]),
+    el('figure', {}, mapHost)]);
+
+  const cc = track._error ? null : track.pdp_category_change;
+  const pdnpPanel = panel('停产井（PDNP）', {
+    meta: `计入 ${cat.pdnp.n_booked} 口 · ${fmtT(cat.pdnp.reserves_t)}`, note: cat.pdnp.rule + '。', flush: true
+  }, [pdnpT ? el('div', { style: 'padding:6px 16px 8px;border-bottom:1px solid var(--rule-soft)' }, kv([
+      ['期初 → 期末', `${pdnpT.n_opening} → ${pdnpT.n_closing} 口`],
+      ['复产转 PDP / 新增停产', `${pdnpT.n_reactivated} / ${pdnpT.n_new} 口`],
+      ['长停或不经济移出', `${pdnpT.n_removed} 口`],
+      ['PDP 对账类别调整', `复产转入 ${fmtT(cc.reactivated_t)}（${cc.n_reactivated} 口）；停井转出 ${fmtT(cc.shut_in_t)}（${cc.n_shut_in} 口）`]])) : null,
+    table([{ h: '井号', k: 'well_code', render: r => el('a', { href: '#/well', text: r.well_code, onclick: () => pickWell(r.well_code) }) },
+      { h: '单元', k: 'unit_id' }, { h: '最后生产', k: 'last_prod_ym' }, { h: '停产月数', k: 'shut_in_months', num: true, d: 0 },
+      { h: '判定', k: 'status', render: r => tag(r.status_cn, PDNP_KIND[r.status]) },
+      { h: 'PDNP (t)', k: 'reserves_t', num: true, d: 0 }, { h: '续算估计 (t)', k: 'estimate_t', num: true, d: 0 },
+      { h: '停产时日产 (t/d)', k: 'rate_at_shut_t_per_d', num: true }], cat.pdnp.wells, { scroll: true })]);
+
+  const warnIds = new Set(cat.warnings.map(w => w.location_id));
+  const locHost = el('div');
+  const drawLocs = () => locHost.replaceChildren(table([
+    { h: '井位', k: 'location_id', render: r => el('span', { class: 'mono', text: r.location_id }) }, { h: '单元', k: 'unit_id' },
+    { h: '判定', k: 'status', render: r => tag(r.status_cn, PUD_KIND[r.status]) },
+    { h: '计划钻井', k: 'planned_drill_ym' }, { h: '首次入账', k: 'first_booked_as_of', render: r => r.first_booked_as_of || '—' },
+    { h: '五年期限', k: 'deadline_ym' },
+    { h: '剩余年限', k: 'years_to_deadline', num: true, render: r => ['booked', 'expired_5yr'].includes(r.status) ? fmt(r.years_to_deadline, 1) + ' 年' : '—' },
+    { h: '周边在产井', k: 'n_producing_neighbors', num: true, d: 0 },
+    { h: '投资 (万元)', k: 'capex_wan', num: true, d: 0 }, { h: '净现金流 (万元)', k: 'cash_wan', num: true, d: 0 },
+    { h: '剩余可采 (t)', k: 'reserves_t', num: true, d: 0 },
+    { h: '已钻井号', k: 'drilled_well_code', render: r => r.drilled_well_code || '—' }],
+  cat.pud.locations.filter(l => S.locFilter === 'all' || (S.locFilter === 'booked' ? l.status === 'booked'
+    : S.locFilter === 'warn' ? warnIds.has(l.location_id) || l.status === 'expired_5yr' : !['booked', 'drilled'].includes(l.status))), { scroll: true }));
+  drawLocs();
+  const locPanel = panel('部署井位清单', {
+    meta: cat.pud.rule, flush: true,
+    actions: [segControl([['all', '全部'], ['booked', '已入账'], ['warn', '预警 / 超五年'], ['out', '未入账']], S.locFilter,
+      k => { S.locFilter = k; drawLocs(); }, '按判定筛选')]
+  }, locHost);
+
+  show(host, strip,
+    cat.warnings.length ? alertBar('warn', `五年规则预警 ${cat.warnings.length} 条`,
+      cat.warnings.slice(0, 3).map(w => w.text).join('；') + (cat.warnings.length > 3 ? '；其余见部署井位清单' : '')) : null,
+    el('div', { class: 'row c2' }, [unitPanel, rollPanel]),
+    el('div', { class: 'row c2' }, [mapPanel, pdnpPanel]),
+    el('div', { class: 'row' }, locPanel));
+}
+
+/* ── SEC 单元 · 折耗与减值 ── */
+const wanU = v => v == null ? { value: '—' } : Math.abs(v) >= 1e4 ? { value: fmt(v / 1e4, 2), unit: '亿元' } : { value: fmt(v, 0), unit: '万元' };
+const fmtW = v => v == null ? '—' : Math.abs(v) >= 1e4 ? fmt(v / 1e4, 2) + ' 亿元' : fmt(v, 0) + ' 万元';
+
+async function renderDepletion() {
+  const host = $('#tab-depletion'), token = ++S.tok.depletion;
+  host.replaceChildren(loading('加载评估单元…'));
+  await ensureUnits();
+  if (token !== S.tok.depletion || S.page !== 'depletion') return;
+  setCtx('depletion', unitCtx({ date: true }, renderDepletion));
+  host.replaceChildren(loading('计算中… 折耗按 SEC 价证实已开发储量，减值测试另按减值测试价重新评估'));
+  const d = await softApi('/unit/depletion', { scope: S.scope, as_of: S.asOf });
+  if (token !== S.tok.depletion) return;
+  if (d._error) { show(host, alertBar('crit', '折耗与减值不可得', d._error)); return; }
+  const s = d.summary, a = d.assumptions;
+  const strip = kpiStrip([
+    { label: '期初资产净值', ...wanU(s.opening_nbv_wan), note: `${s.n_units} 个单元合计` },
+    { label: '本期资本化投入', ...wanU(s.capex_additions_wan), note: '新井钻完井与措施费用' },
+    { label: '折耗额', ...wanU(s.depletion_wan), note: `产量法折耗率 ${fmt(s.depletion_rate_pct, 2)}%` },
+    { label: '可收回金额', ...wanU(s.recoverable_wan), note: `${a.impairment_scenario} · 折现率 ${fmt(a.discount_rate * 100, 0)}%` },
+    { label: '减值额', ...wanU(s.impairment_wan), note: s.n_impaired ? [tag(`${s.n_impaired} 个单元减值`, 'crit')] : '未发生减值' },
+    { label: '期末资产净值', ...wanU(s.closing_nbv_wan), note: `整体账面余量 ${s.headroom_pct == null ? '—' : signed(s.headroom_pct, 1) + '%'}` }]);
+
+  const flow = [
+    { key: 'opening', item: '期初资产净值', label: '期初', value: s.opening_nbv_wan, total: true, color: cssVar('--neutral') },
+    { key: 'capex', item: '本期资本化投入', label: '投入', value: s.capex_additions_wan, color: cssVar('--neutral-2') },
+    { key: 'dep', item: '折耗', label: '折耗', value: -s.depletion_wan, color: cssVar('--neutral-2') },
+    { key: 'imp', item: '减值', label: '减值', value: -s.impairment_wan, color: cssVar('--crit') },
+    { key: 'closing', item: '期末资产净值', label: '期末', value: s.closing_nbv_wan, total: true, color: cssVar('--neutral') }];
+  const plot = el('div');
+  waterfall(plot, flow, { unit: '万元', totalLabel: '净值', compact: v => Math.abs(v) >= 1e4 ? fmt(v / 1e4, 1) + '亿' : fmt(v, 0) });
+  const flowPanel = panel('资产净值变动', { meta: `${d.scope.name} · ${d.as_of} · 单位 万元`,
+    table: table([{ h: '项目', k: 'item' }, { h: '金额 (万元)', k: 'value', num: true, d: 1 }], flow) },
+  [legend([{ name: '期初 / 期末', color: cssVar('--neutral'), kind: 'box' }, { name: '投入与折耗', color: cssVar('--neutral-2'), kind: 'box' },
+    { name: '减值', color: cssVar('--crit'), kind: 'box' }]), el('figure', {}, plot)]);
+  const methodPanel = panel('口径与假设', { note: d.note + '。' }, [
+    el('ol', { class: 'method' }, d.method.map(m => el('li', { text: m }))),
+    kv([['汇率', `${a.fx_cny_per_usd} 元 / 美元`], ['折现率', fmt(a.discount_rate * 100, 0) + '%'], ['减值测试价格情景', a.impairment_scenario],
+      ['账面数据', '单元资产账面价值表（可在 系统 · 数据导入 替换为财务台账）']])]);
+
+  const units = d.units.slice().sort((p, q) => (p.headroom_pct ?? 0) - (q.headroom_pct ?? 0));
+  const hplot = el('div');
+  divergingBars(hplot, units.map(u => ({ label: u.unit_id, value: Math.max(-150, Math.min(150, u.headroom_pct ?? 0)), raw: u })), '%', {
+    colorOf: r => r.raw.impaired ? cssVar('--crit') : cssVar('--neutral-2'),
+    labelOf: r => r.raw.headroom_pct == null ? '—' : signed(r.raw.headroom_pct, 1) + '%',
+    axisLabel: '← 减值　账面余量（%）　有余量 →',
+    tip: r => `<b>${r.raw.unit_id} ${r.raw.unit_name}</b>` +
+      `<div class="row"><span>折耗后账面价值</span><span class="mono">${fmtW(r.raw.carrying_wan)}</span></div>` +
+      `<div class="row"><span>可收回金额</span><span class="mono">${fmtW(r.raw.recoverable_wan)}</span></div>` +
+      `<div class="row"><span>减值额</span><span class="mono">${fmtW(r.raw.impairment_wan)}</span></div>` +
+      `<div class="row"><span>账面余量</span><span class="mono">${signed(r.raw.headroom_pct, 1)}%</span></div>` });
+  const headPanel = panel('各单元减值测试', { meta: '账面余量 =（可收回金额 − 折耗后账面价值）/ 折耗后账面价值',
+    note: '条形超过 ±150% 截断显示，标注的是实际余量。' },
+  [legend([{ name: '有余量', color: cssVar('--neutral-2'), kind: 'box' }, { name: '减值', color: cssVar('--crit'), kind: 'box' }]), el('figure', {}, hplot)]);
+
+  const detail = panel('单元明细', { meta: '金额单位 万元', flush: true },
+    table([{ h: '单元', k: 'unit_id' }, { h: '期初净值', k: 'opening_nbv_wan', num: true, d: 0 },
+      { h: '期初来源', k: 'opening_source' }, { h: '本期投入', k: 'capex_additions_wan', num: true, d: 0 },
+      { h: '本期产量 (t)', k: 'production_t', num: true, d: 0 }, { h: 'PD 储量 (t)', k: 'pd_reserves_t', num: true, d: 0 },
+      { h: '折耗率', k: 'depletion_rate_pct', num: true, render: r => fmt(r.depletion_rate_pct, 2) + '%' },
+      { h: '折耗额', k: 'depletion_wan', num: true, d: 0 }, { h: '账面价值', k: 'carrying_wan', num: true, d: 0 },
+      { h: '减值价 PD (t)', k: 'pd_reserves_impairment_t', num: true, d: 0 },
+      { h: '吨油净现金流 (USD)', k: 'cash_usd_per_t', num: true, d: 1 },
+      { h: '可收回金额', k: 'recoverable_wan', num: true, d: 0 },
+      { h: '减值额', k: 'impairment_wan', num: true, render: r => r.impaired ? tag(fmt(r.impairment_wan, 0), 'crit') : '—' },
+      { h: '期末净值', k: 'closing_nbv_wan', num: true, d: 0 }], d.units, { scroll: true }));
+  show(host, strip, el('div', { class: 'row c21' }, [flowPanel, methodPanel]), el('div', { class: 'row c12' }, [headPanel, detail]));
+}
+
+/* ── 系统 · 数据导入 ── */
+async function renderImport() {
+  const host = $('#tab-import');
+  host.replaceChildren(loading());
+  const types = await api('/import/types');
+  if (S.page !== 'import') return;
+  setCtx('import', [tag('CSV（UTF-8 / GBK）或 Excel'), tag('先预检，后导入，可撤销')]);
+  if (!types.types.some(t => t.key === S.importType)) S.importType = types.types[0].key;
+  const state = { file: null, b64: null, preview: null };
+  const typeOf = () => types.types.find(t => t.key === S.importType);
+
+  const steps = el('div', { class: 'steps' });
+  const drawSteps = k => steps.replaceChildren(...['选择类型', '上传文件', '预检', '确认导入'].flatMap((txt, i) =>
+    [i ? el('span', { text: '›', 'aria-hidden': 'true' }) : null, el('span', { class: i <= k ? 'on' : null, text: `${i + 1} ${txt}` })]).filter(Boolean));
+  const tpl = el('a', { class: 'btn sm' }, [icon('download'), '下载模板']);
+  const cards = el('div', { class: 'types', role: 'group', 'aria-label': '导入类型' });
+  const specHost = el('div');
+  const result = el('div');
+  const fileInput = el('input', { type: 'file', accept: '.csv,.xlsx,.xlsm', hidden: true });
+  const drop = el('div', { class: 'drop', tabindex: 0, role: 'button', 'aria-label': '选择或拖入文件' },
+    [icon('upload'), el('div', {}, [el('b', { text: '点击选择文件' }), '，或把 CSV / Excel 拖到这里']),
+      el('div', { style: 'font-size:11.5px', text: '单个文件不超过 5 MB；有错误时不会写入任何数据' })]);
+
+  const drawCards = () => cards.replaceChildren(...types.types.map(t => {
+    const b = el('button', { type: 'button', 'aria-pressed': String(t.key === S.importType) }, [el('b', { text: t.title }), el('span', { text: t.description })]);
+    b.addEventListener('click', () => { if (t.key !== S.importType) { S.importType = t.key; resetFile(); drawCards(); drawSpec(); } });
+    return b;
+  }));
+  const drawSpec = () => {
+    const t = typeOf();
+    tpl.href = '/api/v1/import/template?type=' + t.key;
+    specHost.replaceChildren(
+      el('p', { class: 'muted', style: 'margin:0 0 10px', text: t.description }),
+      table([{ h: '中文列名', k: 'label' }, { h: '字段名', k: 'name', render: r => el('span', { class: 'mono', text: r.name }) },
+        { h: '必填', k: 'required', render: r => r.required ? tag('必填', 'brand') : tag('可选') }], t.columns),
+      el('ul', { class: 'method', style: 'margin-top:12px' }, [
+        '表头用中文列名或字段名均可，列顺序不限',
+        `按主键（${t.keys.map(k => (t.columns.find(c => c.name === k) || {}).label || k).join(' + ')}）替换已有数据，文件里没有的行保持不动`,
+        '导入后受影响的评估会自动重算；在下方导入记录里可撤销最近一次导入'].map(x => el('li', { text: x }))));
+  };
+  function resetFile(keep) {
+    state.file = state.b64 = state.preview = null;
+    if (!keep) result.replaceChildren();
+    drawSteps(1);
+  }
+  async function pick(f) {
+    if (f.size > 5 * 1024 * 1024) { toast('文件超过 5 MB', 'crit'); return; }
+    state.file = f;
+    drawSteps(2);
+    result.replaceChildren(loading(`正在预检 ${f.name}…`, true));
+    try {
+      state.b64 = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(',')[1] || '');
+        r.onerror = () => rej(new Error('文件读取失败'));
+        r.readAsDataURL(f);
+      });
+      state.preview = await apiPost('/import/preview', { import_type: S.importType, filename: f.name, content_base64: state.b64 });
+      drawResult();
+    } catch (e) {
+      result.replaceChildren(alertBar('crit', '预检失败', e.message));
+    }
+  }
+  function drawResult() {
+    const p = state.preview, sm = p.summary;
+    const label = () => [icon('upload'), `确认导入 ${sm.n_valid} 行`];
+    const commit = el('button', { class: 'btn primary', type: 'button', disabled: !p.can_commit }, label());
+    const again = el('button', { class: 'btn', type: 'button', text: '重新选择' });
+    again.addEventListener('click', () => { resetFile(); fileInput.click(); });
+    commit.addEventListener('click', async () => {
+      commit.disabled = true;
+      commit.replaceChildren(el('i', { class: 'spin' }), '导入中…');
+      try {
+        const r = await apiPost('/import/commit', { import_type: S.importType, filename: state.file.name, content_base64: state.b64 });
+        toast(`已导入 ${r.n_rows} 行（新增 ${r.n_insert}，替换 ${r.n_replace}），批次 ${r.batch_id}`);
+        drawSteps(3);
+        result.replaceChildren(alertBar('info', '导入完成', `批次 ${r.batch_id}：新增 ${r.n_insert} 行，替换 ${r.n_replace} 行。相关页面再次打开时会按新数据重算。`));
+        state.file = state.b64 = state.preview = null;
+        refreshHistory();
+      } catch (e) {
+        toast('导入失败：' + e.message, 'crit');
+        commit.disabled = false;
+        commit.replaceChildren(...label());
+      }
+    });
+    const ks = kpiStrip([{ label: '文件行数', value: sm.n_rows, unit: '行' }, { label: '有效', value: sm.n_valid, unit: '行' },
+      { label: '错误', value: sm.n_errors, unit: '处' }, { label: '提醒', value: sm.n_warnings, unit: '处' },
+      { label: '新增', value: sm.n_insert, unit: '行' }, { label: '替换已有', value: sm.n_replace, unit: '行' }]);
+    ks.classList.add('inset');
+    const issueCols = [{ h: '行', k: 'row', num: true, render: r => r.row == null ? '表头' : String(r.row) },
+      { h: '列', k: 'column', render: r => r.column || '—' }, { h: '值', k: 'value', render: r => r.value || '—' },
+      { h: '问题', k: 'message', cls: 'wrap' }];
+    drawSteps(2);
+    show(result, ...[
+      el('div', { style: 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 10px' },
+        [el('b', { text: p.filename }), p.can_commit ? tag('预检通过', 'ok') : tag('有错误，不能导入', 'crit'), el('span', { class: 'spacer' }), again, commit]),
+      ks,
+      p.errors.length ? box(`错误 ${p.errors.length} 处（修正后重新上传）`, table(issueCols, p.errors, { scroll: true })) : null,
+      p.warnings.length ? box(`提醒 ${p.warnings.length} 处（不阻断导入）`, table(issueCols, p.warnings, { scroll: true })) : null,
+      p.sample.length ? box('数据预览（前 20 行，已按字段换算）', table(p.columns.map(c => ({ h: c.label, k: c.name,
+        render: r => r[c.name] == null ? '—' : String(r[c.name]) })), p.sample, { scroll: true })) : null].filter(Boolean));
+  }
+
+  drop.addEventListener('click', () => fileInput.click());
+  drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+  ['dragenter', 'dragover'].forEach(n => drop.addEventListener(n, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(n => drop.addEventListener(n, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) pick(f); });
+  fileInput.addEventListener('change', () => { const f = fileInput.files[0]; if (f) pick(f); fileInput.value = ''; });
+
+  const histHost = el('div');
+  async function refreshHistory() {
+    let h;
+    try { h = await api('/import/history'); } catch (e) { histHost.replaceChildren(alertBar('crit', '导入记录不可得', e.message)); return; }
+    histHost.replaceChildren(h.batches.length ? table([
+      { h: '批次', k: 'batch_id', render: r => el('span', { class: 'mono', text: r.batch_id }) },
+      { h: '类型', k: 'title' }, { h: '文件', k: 'filename' }, { h: '行数', k: 'n_rows', num: true, d: 0 },
+      { h: '新增 / 替换', k: 'x', num: true, render: r => `${r.summary.n_insert ?? '—'} / ${r.summary.n_replace ?? '—'}` },
+      { h: '导入时间', k: 'created_at', render: r => String(r.created_at || '').slice(0, 19).replace('T', ' ') },
+      { h: '状态', k: 'status', render: r => r.status === 'active' ? tag('有效', 'ok') : tag('已撤销') },
+      { h: '操作', k: 'op', render: r => {
+        if (!r.can_undo) return '—';
+        const b = el('button', { class: 'btn sm', type: 'button', text: '撤销' });
+        b.addEventListener('click', async () => {
+          if (!confirm(`撤销批次 ${r.batch_id}？将恢复导入前的数据。`)) return;
+          b.disabled = true;
+          try { const u = await apiPost('/import/undo', { batch_id: r.batch_id }); toast(`已撤销 ${u.batch_id}：删除 ${u.removed} 行，恢复 ${u.restored} 行`); refreshHistory(); }
+          catch (e) { toast('撤销失败：' + e.message, 'crit'); b.disabled = false; }
+        });
+        return b;
+      } }], h.batches) : emptyState('还没有导入记录'));
+  }
+
+  drawCards(); drawSpec(); drawSteps(0);
+  const uploadPanel = panel('上传数据', { actions: [tpl] }, [steps, cards, el('div', { style: 'margin-top:12px' }, drop), fileInput, result]);
+  const specPanel = panel('字段说明', { meta: '以模板为准' }, specHost);
+  const histPanel = panel('导入记录', { meta: '只能撤销每种类型最近一次仍有效的导入', flush: true }, histHost);
+  show(host, el('div', { class: 'row c21' }, [uploadPanel, specPanel]), el('div', { class: 'row' }, histPanel));
+  refreshHistory();
+}
+
+/* ── 系统 · 指标口径（评分锚点方案） ── */
+async function renderProfiles() {
+  const host = $('#tab-indicators'), token = ++S.tok.profiles;
+  host.replaceChildren(loading());
+  await ensureUnits();
+  if (token !== S.tok.profiles || S.page !== 'indicators') return;
+  const lst = await api('/indicator-profiles');
+  if (token !== S.tok.profiles) return;
+  setCtx('indicators', [...unitCtx({}, renderProfiles), tag('预览基准日 ' + S.units.evaluation_dates.at(-1))]);
+  const ref = lst.reference, asOf = S.units.evaluation_dates.at(-1);
+  const byId = Object.fromEntries(lst.profiles.map(p => [p.profile_id, p]));
+  if (!byId[S.profileSel]) S.profileSel = (lst.profiles.find(p => p.is_default) || lst.profiles[0]).profile_id;
+  const cur = byId[S.profileSel];
+  const draft = JSON.parse(JSON.stringify(cur.spec.indicators));
+  let dirty = false, saved = null;
+
+  const list = el('div', { class: 'plist' }, lst.profiles.map(p => {
+    const b = el('button', { type: 'button', 'aria-current': String(p.profile_id === S.profileSel) }, [
+      el('span', { class: 'pn' }, [p.name, p.is_builtin ? tag('内置') : tag('自定义', 'brand'), p.is_default ? tag('默认', 'ok') : null]),
+      el('span', { class: 'pd', text: p.description || '—' })]);
+    b.addEventListener('click', () => {
+      if (p.profile_id === S.profileSel) return;
+      if (dirty && !confirm('当前方案有未保存的修改，确定切换？')) return;
+      S.profileSel = p.profile_id; renderProfiles();
+    });
+    return b;
+  }));
+
+  const errBox = el('div'), scoreStrip = el('div', { class: 'kpis inset' });
+  const inputs = {}, valueCells = {}, scoreCells = {};
+  const dirText = k => {
+    const x = draft[k];
+    return !Number.isFinite(x.good) || !Number.isFinite(x.bad) || x.good === x.bad ? '—' : x.good > x.bad ? '越大越好' : '越小越好';
+  };
+  const numIn = (key, field) => {
+    const inp = el('input', { type: 'number', step: 'any', class: 'num-in', value: String(draft[key][field]),
+      'aria-label': `${ref.indicators[key].name} ${{ good: '优值锚点', bad: '差值锚点', weight: '权重' }[field]}` });
+    inp.addEventListener('input', () => {
+      const v = parseFloat(inp.value);
+      draft[key][field] = Number.isFinite(v) ? v : NaN;
+      inp.classList.toggle('changed', draft[key][field] !== cur.spec.indicators[key][field]);
+      dirty = true;
+      if (validate()) schedule();
+    });
+    inputs[key + ':' + field] = inp;
+    return inp;
+  };
+  const rows = Object.entries(ref.indicators).map(([k, r]) => ({ key: k, ...r }));
+  const tbl = table([
+    { h: '指标', k: 'name', render: r => el('span', {}, [r.name, el('div', { class: 'sub2', text: ref.groups[r.group] || r.group })]) },
+    { h: '本期值', k: 'v', num: true, render: r => (valueCells[r.key] = el('span', { text: '…' })) },
+    { h: '优值锚点', k: 'good', num: true, render: r => numIn(r.key, 'good') },
+    { h: '差值锚点', k: 'bad', num: true, render: r => numIn(r.key, 'bad') },
+    { h: '方向', k: 'dir', render: r => (inputs[r.key + ':dir'] = el('span', { class: 'muted', text: dirText(r.key) })) },
+    { h: '权重', k: 'weight', num: true, render: r => numIn(r.key, 'weight') },
+    { h: '得分（预览）', k: 's', num: true, render: r => (scoreCells[r.key] = el('span', { text: '…' })) }], rows, { scroll: true });
+
+  const nameIn = el('input', { type: 'text', value: cur.name, disabled: cur.is_builtin });
+  const descIn = el('input', { type: 'text', value: cur.description || '', disabled: cur.is_builtin });
+  [nameIn, descIn].forEach(i => i.addEventListener('input', () => { dirty = true; validate(); }));
+  const saveBtn = el('button', { class: 'btn sm primary', type: 'button', text: '保存' });
+  const saveAsBtn = el('button', { class: 'btn sm', type: 'button', text: '另存为新方案' });
+  const defBtn = el('button', { class: 'btn sm', type: 'button', text: cur.is_default ? '已是默认' : '设为默认', disabled: cur.is_default });
+  const delBtn = cur.is_builtin ? null : el('button', { class: 'btn sm', type: 'button', text: '删除' });
+  const resetBtn = el('button', { class: 'btn sm', type: 'button', text: '撤销修改' });
+  const specOf = () => ({ indicators: Object.fromEntries(Object.entries(draft).map(([k, v]) => [k, { good: v.good, bad: v.bad, weight: v.weight }])) });
+
+  function validate() {
+    const errs = [];
+    Object.entries(draft).forEach(([k, x]) => {
+      const badAnchor = !Number.isFinite(x.good) || !Number.isFinite(x.bad) || x.good === x.bad;
+      const badWeight = !Number.isFinite(x.weight) || x.weight < 0;
+      inputs[k + ':good'].classList.toggle('bad', badAnchor);
+      inputs[k + ':bad'].classList.toggle('bad', badAnchor);
+      inputs[k + ':weight'].classList.toggle('bad', badWeight);
+      inputs[k + ':dir'].textContent = dirText(k);
+      if (badAnchor) errs.push(`${ref.indicators[k].name}：优值与差值锚点须为不同的数值`);
+      if (badWeight) errs.push(`${ref.indicators[k].name}：权重须为非负数值`);
+    });
+    if (!cur.is_builtin && !nameIn.value.trim()) errs.push('方案名称不能为空');
+    errBox.replaceChildren(...(errs.length ? [alertBar('crit', `${errs.length} 处需要修正`, errs.slice(0, 4).join('；') + (errs.length > 4 ? '…' : ''))] : []));
+    saveBtn.disabled = cur.is_builtin || !dirty || !!errs.length;
+    saveAsBtn.disabled = !!errs.length;
+    return !errs.length;
+  }
+  let timer = 0, seq = 0;
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(preview, 350); };
+  function paint(p) {
+    p.indicators.forEach(x => {
+      if (!valueCells[x.key]) return;
+      valueCells[x.key].textContent = x.value == null ? '—' : `${fmt(x.value, 2)} ${x.unit}`;
+      const s0 = saved && saved.indicators.find(y => y.key === x.key);
+      scoreCells[x.key].replaceChildren(x.score == null ? '—' : fmt(x.score, 1),
+        s0 && x.score != null && s0.score != null && Math.abs(x.score - s0.score) >= 0.05 ? el('span', { style: 'margin-left:6px' }, delta(x.score - s0.score, 1)) : '');
+    });
+    const ks = kpiStrip(p.groups.map(g => {
+      const g0 = saved && saved.groups.find(y => y.group === g.group);
+      return { label: `${g.name}综合分`, value: fmt(g.score, 1), unit: '分',
+        note: g0 && Math.abs(g.score - g0.score) >= 0.05 ? ['较已保存 ', delta(g.score - g0.score, 1)] : '与已保存方案一致' };
+    }));
+    scoreStrip.replaceChildren(...ks.children);
+  }
+  async function preview() {
+    const my = ++seq;
+    try {
+      const r = await apiPost('/indicator-profiles/preview', { scope: S.scope, as_of_list: asOf, spec: specOf() });
+      if (my === seq) paint(r.periods[0]);
+    } catch (e) { errBox.replaceChildren(alertBar('crit', '预览失败', e.message)); }
+  }
+
+  saveBtn.addEventListener('click', async () => {
+    if (!validate()) return;
+    try {
+      await apiPost('/indicator-profiles/save', { profile_id: cur.profile_id, name: nameIn.value.trim(), description: descIn.value.trim(), spec: specOf() });
+      toast(`已保存方案"${nameIn.value.trim()}"`); dirty = false; renderProfiles();
+    } catch (e) { toast('保存失败：' + e.message, 'crit'); }
+  });
+  saveAsBtn.addEventListener('click', async () => {
+    if (!validate()) return;
+    const name = prompt('新方案名称', `${cur.name}（调整）`);
+    if (!name || !name.trim()) return;
+    try {
+      const r = await apiPost('/indicator-profiles/save', { name: name.trim(), description: `基于"${cur.name}"调整`, spec: specOf() });
+      toast(`已另存为"${r.profile.name}"`); dirty = false; S.profileSel = r.profile.profile_id; renderProfiles();
+    } catch (e) { toast('另存失败：' + e.message, 'crit'); }
+  });
+  defBtn.addEventListener('click', async () => {
+    try { await apiPost('/indicator-profiles/default', { profile_id: cur.profile_id }); toast(`"${cur.name}"已设为默认方案，运行监控与报告将按它评分`); renderProfiles(); }
+    catch (e) { toast('设置失败：' + e.message, 'crit'); }
+  });
+  if (delBtn) delBtn.addEventListener('click', async () => {
+    if (!confirm(`删除方案"${cur.name}"？此操作不可恢复。`)) return;
+    try { await apiPost('/indicator-profiles/delete', { profile_id: cur.profile_id }); toast(`已删除"${cur.name}"`); S.profileSel = null; renderProfiles(); }
+    catch (e) { toast('删除失败：' + e.message, 'crit'); }
+  });
+  resetBtn.addEventListener('click', () => { if (!dirty || confirm('放弃未保存的修改？')) { dirty = false; renderProfiles(); } });
+
+  const listPanel = panel('锚点方案', { meta: `${lst.profiles.length} 个`, flush: true, note: lst.scoring }, list);
+  const editor = panel(cur.name, {
+    meta: cur.is_builtin ? '内置方案（只读，可另存为新方案）' : `自定义方案 · 更新于 ${String(cur.updated_at || '').slice(0, 19).replace('T', ' ')}`,
+    actions: [resetBtn, saveAsBtn, defBtn, delBtn, saveBtn].filter(Boolean)
+  }, [
+    cur.is_builtin ? alertBar('info', '内置方案只读', '可以直接修改下方锚点预览效果，满意后"另存为新方案"。锚点为示例值，正式使用须由开发与经营部门按本油田水平标定。')
+      : el('div', { class: 'fields' }, [el('label', {}, ['方案名称', nameIn]), el('label', {}, ['说明', descIn])]),
+    errBox, scoreStrip, box(`锚点与权重 · ${S.scope} · ${asOf}`, tbl)]);
+  show(host, el('div', { class: 'row c-side' }, [listPanel, editor]));
+  validate();
+  try {
+    const r = await api('/unit/indicators', { scope: S.scope, as_of_list: asOf, profile: cur.profile_id });
+    if (token !== S.tok.profiles) return;
+    saved = r.periods[0];
+    paint(saved);
+  } catch (e) { errBox.replaceChildren(alertBar('crit', '指标值不可得', e.message)); }
 }
 
 /* ── 智能问答：工具调用轨迹是这一页的主角 ── */
@@ -2208,8 +2798,12 @@ const PAGES = {
   well: { group: '单井分析', title: '全生命周期预测', icon: 'trend', render: renderWell },
   reserves: { group: '单井分析', title: '储量与 SEC 预评估', icon: 'db', render: renderReserves },
   unit: { group: 'SEC 单元', title: '构成评估', icon: 'layers', render: renderUnit },
+  categories: { group: 'SEC 单元', title: '类别跟踪', icon: 'pie', render: renderCategories },
+  depletion: { group: 'SEC 单元', title: '折耗与减值', icon: 'coins', render: renderDepletion },
   monitor: { group: 'SEC 单元', title: '运行监控', icon: 'bars', render: renderMonitor },
   chat: { group: '智能分析', title: '智能问答', icon: 'chat', render: renderChat },
+  import: { group: '系统', title: '数据导入', icon: 'upload', render: renderImport },
+  indicators: { group: '系统', title: '指标口径', icon: 'sliders', render: renderProfiles },
   eval: { group: '系统', title: '模型评测', icon: 'check', render: renderEval }
 };
 (function buildNav() {
