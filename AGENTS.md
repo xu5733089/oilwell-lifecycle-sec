@@ -91,6 +91,10 @@ src/agent/  →  src/api/services.py  →  src/models,reserves,sec  →  src/db.
   业务代码不许依赖它 —— 真实数据没有真值。
 - 真实轨道的适配器除四张基础表外，还要写 `sec_unit`、`unit_well`（储量单元台账）；`unit_plan_monthly`（计划）、`unit_asset_book`（财务台账）、`unit_location`（开发方案井位）既可由适配器写，也可由业务人员在 系统 · 数据导入 上传。
 - 所有记录带 `data_source`；合成数据在任何对外呈现里都要标注"模拟数据"。
+- **公开数据（NDIC 等）只用于回测**：下载与解析结果只落 `data/raw/`（已忽略），不写入 `warehouse.db`，不进版本库；
+  井号一律不可逆哈希，井名、公司名、经纬度不读；测试用自造数据，不联网。
+- **回测考题不许用被测模型的公式生成**：验证物理约束递减用的是复合平板解析解，不是 `physics_dca.rate`；队列参数只按生成器自身的合理性统计选，不看方法的回测结果。
+- **披露草稿（Item 1203 等）只组织文字**：数字全部取自已有服务（`unit_category_tracking`、`unit_proved_categories`），不在草稿函数里另算口径。
 
 ## 加东西的顺序
 

@@ -433,6 +433,15 @@ a.btn{text-decoration:none}
 .legend i.swatchbar{width:120px;height:8px;border-radius:4px}
 .best{font-weight:600;color:var(--ok)}
 .tags{display:inline-flex;gap:4px;flex-wrap:wrap}
+.pnote-inline{padding:10px 16px;background:var(--surface-2);border-bottom:1px solid var(--rule-soft);font-size:12.5px;color:var(--ink-2);line-height:1.7}
+.disc{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 22px}
+@media(max-width:1180px){.disc{grid-template-columns:minmax(0,1fr)}}
+.disc-sec h4{margin:0 0 6px;font-size:13px;font-weight:600;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.disc-sec h4 .mono{color:var(--brand-ink)}
+.disc-sec p{margin:0 0 8px;font-size:13px;line-height:1.8;color:var(--ink)}
+.disc-cite{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;margin-bottom:8px}
+.disc-cite a.cite{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;background:var(--brand-soft);color:var(--brand-ink);padding:1px 6px;border-radius:3px;text-decoration:none}
+.disc-sec dl.facts{gap:4px 18px;padding-top:8px;border-top:1px dashed var(--rule-soft)}
 .csearch{padding:10px 12px;border-bottom:1px solid var(--rule-soft)}
 .csearch input{width:100%}
 .clist{max-height:640px;overflow:auto;padding:4px 0}
@@ -2853,10 +2862,13 @@ async function renderCategories() {
   setCtx('categories', unitCtx({ date: true, scenario: true }, renderCategories));
   host.replaceChildren(loading('评估中… 停产井逐井续算、部署井位逐个判定连续性、五年规则与经济性'));
   const dates = S.units.evaluation_dates, idx = dates.indexOf(S.asOf);
-  const [cat, track] = await Promise.all([
+  const noPrev = { _error: `${S.asOf} 是首个评估基准日，没有上期结果可滚动` };
+  const [cat, track, disc] = await Promise.all([
     softApi('/unit/categories', { scope: S.scope, as_of: S.asOf, scenario: S.scenario }),
     idx > 0 ? softApi('/unit/category-tracking', { scope: S.scope, from_as_of: dates[idx - 1], to_as_of: S.asOf, scenario: S.scenario })
-      : Promise.resolve({ _error: `${S.asOf} 是首个评估基准日，没有上期结果可滚动` })]);
+      : Promise.resolve(noPrev),
+    idx > 0 ? softApi('/unit/pud-disclosure', { scope: S.scope, from_as_of: dates[idx - 1], to_as_of: S.asOf, scenario: S.scenario })
+      : Promise.resolve(noPrev)]);
   await ensureBase().catch(() => null);
   if (token !== S.tok.categories) return;
   if (cat._error) { show(host, alertBar('crit', '类别评估失败', cat._error)); return; }
@@ -2961,10 +2973,33 @@ async function renderCategories() {
       k => { S.locFilter = k; drawLocs(); }, '按判定筛选')]
   }, locHost);
 
+  /* Item 1203 披露草稿：逐段文字 + 条款引用 + 取数明细；复制为纯文本 */
+  let discPanel;
+  if (disc._error) discPanel = panel('Item 1203 披露草稿 · 已证实未开发储量', { meta: '不可得' }, emptyState(disc._error));
+  else {
+    const plain = disc.sections.map(x => `${x.item} ${x.title}\n${x.text}（依据：${x.citations.join('；')}）`).join('\n\n');
+    const copy = el('button', { class: 'btn sm', type: 'button' }, [icon('download'), '复制草稿']);
+    copy.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(plain + '\n\n' + disc.draft_note); toast('已复制披露草稿'); } catch (_) { toast('浏览器不允许写剪贴板', 'crit'); }
+    });
+    discPanel = panel('Item 1203 披露草稿 · 已证实未开发储量', {
+      meta: `${disc.scope.name} · ${disc.from_as_of} → ${disc.to_as_of}`, actions: [copy],
+      note: [disc.draft_note, '每段数字均来自类别评估与 PUD 滚动（接口 /unit/categories、/unit/category-tracking），条款号点开可看 eCFR 原文。'],
+      foot: [icon('alert'), '草稿不是定稿：未开发原因、开发计划变更等定性说明须由业务部门补充。']
+    }, el('div', { class: 'disc' }, disc.sections.map(x => el('section', { class: 'disc-sec' }, [
+      el('h4', {}, [el('span', { class: 'mono', text: x.item }), ' ', x.title]),
+      el('p', { text: x.text }),
+      el('div', { class: 'disc-cite' }, [el('span', { class: 'muted', text: '依据' }),
+        ...x.citations.map(c => el('a', { class: 'cite', href: '#/standards', text: c, onclick: () => { S.clause = c; } }))]),
+      el('dl', { class: 'facts' }, x.facts.map(f => el('div', {}, [el('dt', { text: f.label }),
+        el('dd', { text: f.value == null ? '—' : `${fmt(f.value, 1)}${f.unit ? ' ' + f.unit : ''}` })])))]))));
+  }
+
   show(host, strip,
     cat.warnings.length ? alertBar('warn', `五年规则预警 ${cat.warnings.length} 条`,
       cat.warnings.slice(0, 3).map(w => w.text).join('；') + (cat.warnings.length > 3 ? '；其余见部署井位清单' : '')) : null,
     el('div', { class: 'row c2' }, [unitPanel, rollPanel]),
+    el('div', { class: 'row' }, discPanel),
     el('div', { class: 'row c2' }, [mapPanel, pdnpPanel]),
     el('div', { class: 'row' }, locPanel));
 }
@@ -3572,18 +3607,32 @@ async function renderEval() {
         { h: '相对基线 (%)', k: 'gain_pct', num: true, d: 1 }, { h: '梯度提升 MAE', k: 'gbdt_mae', num: true },
         { h: '未加守卫的融合 MAE', k: 'blend_no_guard_mae', num: true }, { h: '漂移退回 (口)', k: 'n_drift_flagged', num: true, d: 0 }], rows))));
   }
-  if (e.dca) {
-    const rows = e.dca.horizons.flatMap(H => [{ _group: `峰后只用前 ${H} 个月历史拟合` },
-      ...e.dca.table.filter(r => r.horizon_months === H).map(r => ({ m: r.method_cn, n: r.n_wells, next: r.next12.mdape_pct,
-        eur: r.eur ? r.eur.mdape_pct : null, bias: r.eur ? r.eur.bias_pct : null, over: r.eur ? r.eur.over20_pct : null,
-        p90: r.eur ? r.eur.p90_pct : null, cap: r.cap_binding_pct }))]);
+  const DCA_SETS = [['dca', '主合成数据'], ['dca_linear_flow', '线性流队列'], ['dca_ndic', 'NDIC 真实井']].filter(([k]) => e[k]);
+  if (DCA_SETS.length) {
+    if (!S.dcaSet || !e[S.dcaSet]) S.dcaSet = DCA_SETS[0][0];
+    const dBody = el('div'), dMeta = el('span'), dNote = el('div', { class: 'pnote-inline' });
+    const drawD = k => {
+      S.dcaSet = k;
+      const D = e[k], useEur = D.truth_available, m = useEur ? 'EUR' : '未来 24 月产量';
+      dMeta.textContent = `${D.dataset_label || '主合成数据集'} · 井 ${D.n_wells_total ?? '—'} 口 · 类比井库 ${D.n_library} 口`;
+      dNote.textContent = D.conclusion;
+      const rows = D.horizons.flatMap(H => [{ _group: `峰后只用前 ${H} 个月历史拟合` },
+        ...D.table.filter(r => r.horizon_months === H).map(r => {
+          const x = (useEur ? r.eur : r.next24) || {};
+          return { m: r.method_cn, n: r.n_wells, next: r.next12.mdape_pct, err: x.mdape_pct, bias: x.bias_pct, over: x.over20_pct, p90: x.p90_pct, cap: r.cap_binding_pct };
+        })]);
+      dBody.replaceChildren(dNote, table([{ h: '方法', k: 'm' }, { h: '井数', k: 'n', num: true, d: 0 },
+        { h: '未来 12 月产量误差 (%)', k: 'next', num: true, d: 1 }, { h: `${m}中位误差 (%)`, k: 'err', num: true, d: 1 },
+        { h: `${m}中位偏差 (%)`, k: 'bias', num: true, d: 1 }, { h: '高估 > 20% 的井 (%)', k: 'over', num: true, d: 1 },
+        { h: `${m}误差 90% 分位 (%)`, k: 'p90', num: true, d: 1 }, { h: '上限触发 (%)', k: 'cap', num: true, d: 1 }], rows));
+    };
     out.push(el('div', { class: 'row' }, panel('算法层 · 递减模型回测', {
-      meta: `类比井库 ${e.dca.n_library} 口 · 回测井与类比井按投产时间交错分开`, flush: true,
-      note: [e.dca.conclusion, '"高估 > 20%" 是 SEC 口径最关心的一列：已证实储量宁低勿高。']
-    }, table([{ h: '方法', k: 'm' }, { h: '井数', k: 'n', num: true, d: 0 }, { h: '未来 12 月产量误差 (%)', k: 'next', num: true, d: 1 },
-      { h: 'EUR 中位误差 (%)', k: 'eur', num: true, d: 1 }, { h: 'EUR 中位偏差 (%)', k: 'bias', num: true, d: 1 },
-      { h: '高估 > 20% 的井 (%)', k: 'over', num: true, d: 1 }, { h: 'EUR 误差 90% 分位 (%)', k: 'p90', num: true, d: 1 },
-      { h: '上限触发 (%)', k: 'cap', num: true, d: 1 }], rows))));
+      meta: dMeta, flush: true,
+      actions: [segControl(DCA_SETS, S.dcaSet, drawD, '回测数据集')],
+      note: ['三个数据集的出题方式不同：主合成数据的递减按 Arps 生成（偏向 Arps）；线性流队列按改造区 + 外围基质的复合平板解析解生成（与两种拟合公式都不同，带真值）；NDIC 是北达科他州公开的真实井（没有 EUR 真值，比未来 24 个月产量）。',
+        '"高估 > 20%" 是 SEC 口径最关心的一列：已证实储量宁低勿高。']
+    }, dBody)));
+    drawD(S.dcaSet);
   } else out.push(alertBar('info', '尚未运行递减模型回测', 'python -m src.cli eval-dca'));
 
   /* ── 失败样例：主动暴露模型、智能体与递减模型的边界 ── */
@@ -3634,16 +3683,26 @@ async function renderEval() {
       { h: '期望工具 / 实际调用', k: 'tools', cls: 'wrap', render: r => `${(r.expected_tools || []).join('、') || '—'} / ${(r.got_tools || []).join('、') || '—'}` }
     ], iss, { scroll: true }) : emptyState('没有失败或需人工的用例'))));
   }
-  if (e.dca && e.dca.worst_overestimates && e.dca.worst_overestimates.length) {
-    const rows = e.dca.horizons.flatMap(h => [{ _group: `峰后只用前 ${h} 个月历史拟合` }, ...e.dca.worst_overestimates.filter(r => r.horizon_months === h)]);
+  if (DCA_SETS.length) {
+    const wBody = el('div');
+    const drawW = k => {
+      const D = e[k], list = D.worst_overestimates || [];
+      if (!list.length) { wBody.replaceChildren(emptyState('该数据集没有逐井高估明细')); return; }
+      const metric = list[0].metric || 'EUR';
+      const rows = D.horizons.flatMap(h => [{ _group: `峰后只用前 ${h} 个月历史拟合` }, ...list.filter(r => r.horizon_months === h)]);
+      wBody.replaceChildren(table([{ h: '方法', k: 'method_cn' },
+        { h: '井号', k: 'well_code', render: r => (k === 'dca' ? el('a', { href: '#/reserves', text: r.well_code, onclick: () => { S.current = r.well_code; } }) : el('span', { class: 'mono', text: r.well_code })) },
+        { h: '区块 / 层位', k: 'block' }, { h: `${metric} 真值 (t)`, k: 'eur_true', num: true, d: 0 }, { h: `${metric} 预测 (t)`, k: 'eur_pred', num: true, d: 0 },
+        { h: '高估', k: 'error_pct', num: true, render: r => tag(`${r.error_pct > 0 ? '+' : ''}${fmt(r.error_pct, 1)}%`, r.error_pct > 20 ? 'crit' : 'warn') },
+        { h: '另一方法同井误差', k: 'other_error_pct', num: true, render: r => `${r.other_method_cn} ${signed(r.other_error_pct, 1)}%` }], rows, { scroll: true }));
+    };
     out.push(el('div', { class: 'row' }, panel('失败样例 · 递减模型高估最多的井', {
-      meta: '每种方法各取 EUR 高估最多的 5 口，并给另一种方法在同一口井上的误差', flush: true,
-      note: ['高估是 SEC 口径最需要避免的错误。对照列能看出是"这口井本身难"（两种方法都高估）还是"某种方法的缺陷"（只有一种高估）。']
-    }, table([{ h: '方法', k: 'method_cn' },
-      { h: '井号', k: 'well_code', render: r => el('a', { href: '#/reserves', text: r.well_code, onclick: () => { S.current = r.well_code; } }) },
-      { h: '区块', k: 'block' }, { h: 'EUR 真值 (t)', k: 'eur_true', num: true, d: 0 }, { h: 'EUR 预测 (t)', k: 'eur_pred', num: true, d: 0 },
-      { h: '高估', k: 'error_pct', num: true, render: r => tag(`+${fmt(r.error_pct, 1)}%`, 'crit') },
-      { h: '另一方法同井误差', k: 'other_error_pct', num: true, render: r => `${r.other_method_cn} ${signed(r.other_error_pct, 1)}%` }], rows, { scroll: true }))));
+      meta: '每种方法各取高估最多的 5 口，并给另一种方法在同一口井上的误差', flush: true,
+      actions: [segControl(DCA_SETS, S.dcaSet, drawW, '回测数据集')],
+      note: ['高估是 SEC 口径最需要避免的错误。对照列能看出是"这口井本身难"（两种方法都高估）还是"某种方法的缺陷"（只有一种高估）。',
+        'NDIC 井号为不可逆哈希，不对应任何可识别的真实井；真实井没有 EUR 真值，这里比较的是未来 24 个月产量。']
+    }, wBody)));
+    drawW(S.dcaSet);
   }
   show(host, ...out);
 }

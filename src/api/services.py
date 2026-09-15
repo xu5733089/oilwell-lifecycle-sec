@@ -690,7 +690,8 @@ def eval_summary(trace_id: Optional[str] = None) -> Dict:
     """读取最近一次评测产物。没跑过就如实说没跑过，不编数字。"""
     import json as _json
     out: Dict = dict(**_env(trace_id))
-    for key, fname in (("agent", "eval_agent.json"), ("algo", "eval_algo.json"), ("dca", "eval_dca.json")):
+    for key, fname in (("agent", "eval_agent.json"), ("algo", "eval_algo.json"), ("dca", "eval_dca.json"),
+                       ("dca_linear_flow", "eval_dca_linear_flow.json"), ("dca_ndic", "eval_dca_ndic.json")):
         f = path("artifacts_dir") / fname
         out[key] = _json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
     meta = _bundle()["meta"]
@@ -1862,6 +1863,99 @@ def unit_category_tracking(scope: str, from_as_of: str = "2025-12-31", to_as_of:
                 pud=pud, pdnp=pdnp, pdp_category_change=recon["category_change_detail"],
                 note="PUD 转化率 = 期初已入账井位中本期钻井转为已开发的比例；按目前节奏消化期末 PUD 所需年数 = 期末入账井位数 / 本期转化数。"
                      "五年规则：井位须在首次入账后五年内钻井，逾期未钻即移出")
+
+
+@cached_service
+def unit_pud_disclosure(scope: str, from_as_of: str = "2025-12-31", to_as_of: str = "2026-12-31",
+                        scenario: str = "sec", trace_id: Optional[str] = None) -> Dict:
+    """Item 1203 已证实未开发储量披露草稿：(a)–(d) 四段。
+
+    不引入新算法：每句的数字取自 unit_category_tracking（PUD 滚动）与 unit_proved_categories（逐井位判定），
+    逐段带条款引用。输出是草稿 —— 定稿须经持证评估人与信息披露部门审核。"""
+    trk = unit_category_tracking(scope, from_as_of=from_as_of, to_as_of=to_as_of, scenario=scenario)
+    pud = trk.get("pud")
+    if not pud:
+        raise KernelError("缺少部署井位的评估结果，无法生成 Item 1203 披露草稿（请先在 系统 · 数据导入 导入部署井位表）")
+    fa, ta = trk["from_as_of"], trk["to_as_of"]
+    cat_to = unit_proved_categories(scope, as_of=ta, scenario=scenario)
+    cat_from = unit_proved_categories(scope, as_of=fa, scenario=scenario)
+    v = {r["key"]: float(r["value"] or 0.0) for r in pud["table"]}
+    now = workload.ym_to_idx(ta[:7])
+    loc_from = {(l["unit_id"], l["location_id"]): l for l in cat_from["pud"]["locations"]}
+    conv = [loc_from[(x["unit_id"], x["location_id"])] for x in pud["converted"] if (x["unit_id"], x["location_id"]) in loc_from]
+    capex_conv = float(sum(l["capex_wan"] or 0.0 for l in conv))
+    booked = [l for l in cat_to["pud"]["locations"] if l["status"] == "booked"]
+
+    def years_since_booked(l: Dict) -> float:
+        fb = str(l["first_booked_as_of"] or ta)
+        return (now - workload.ym_to_idx(fb[:7])) / 12.0
+
+    long_undeveloped = [l for l in booked if years_since_booked(l) >= 5.0]
+    near = sorted((l for l in booked if l["years_to_deadline"] is not None and l["years_to_deadline"] <= 1.0),
+                  key=lambda l: l["deadline_ym"])
+    next12 = [l for l in booked if workload.ym_to_idx(l["planned_drill_ym"]) <= now + 12]
+    capex_next = float(sum(l["capex_wan"] or 0.0 for l in next12))
+    expired = [loc_from[(x["unit_id"], x["location_id"])] for x in pud["expired"] if (x["unit_id"], x["location_id"]) in loc_from]
+    share = next((c["share_pct"] for c in cat_to["categories"] if c["key"] == "PUD"), None)
+    name = trk["scope"]["name"]
+    T = lambda x: f"{x:,.0f} t"
+    W = lambda x: f"{x:,.0f} 万元"
+
+    sec_a = dict(item="Item 1203(a)", title="期末已证实未开发储量",
+                 text=(f"截至 {ta}，{name}已证实未开发储量（PUD）为 {T(v['closing'])}，对应 {pud['n_closing']} 个已入账部署井位，"
+                       f"占已证实储量合计（{T(cat_to['total_proved_t'])}）的 {share}%。"),
+                 citations=["Item 1203(a)", "Rule 4-10(a)(31)"],
+                 facts=[dict(label="期末 PUD", value=_r(v["closing"], 1), unit="t"),
+                        dict(label="已入账井位", value=pud["n_closing"], unit="个"),
+                        dict(label="占已证实储量", value=share, unit="%")])
+    sec_b = dict(item="Item 1203(b)", title="本年重大变化（含转为已开发）",
+                 text=(f"{fa} 至 {ta}，PUD 由 {T(v['opening'])}（{pud['n_opening']} 个井位）变为 {T(v['closing'])}（{pud['n_closing']} 个井位）："
+                       f"钻井转为已开发 {T(-v['converted'])}（{pud['n_converted']} 个井位），五年规则移出 {T(-v['expired_5yr'])}（{pud['n_expired']} 个），"
+                       f"连续性、经济性或取消等其他移出 {T(-v['removed'])}（{pud['n_removed']} 个），继续入账井位修订 {v['revision']:+,.0f} t，"
+                       f"本期新入账 {T(v['new_booking'])}（{pud['n_new']} 个）。"
+                       + ("滚动表按构造闭合。" if pud["balanced"] else f"滚动差额 {pud['difference']} t，定稿前须核查。")),
+                 citations=["Item 1203(b)"],
+                 facts=[dict(label=r["item"], value=r["value"], unit="t") for r in pud["table"]])
+    if pud["n_converted"]:
+        text_c = (f"本期转为已开发的 {pud['n_converted']} 个井位对应钻完井投资 {W(capex_conv)}（按部署井位表的投资口径，未填投资的井位取默认值）；"
+                  f"期初已入账井位的转化率为 {pud['conversion_rate_pct']}%，按目前节奏消化期末 PUD 约需 {pud['years_to_convert_at_pace']} 年。")
+    else:
+        text_c = "本期没有已入账井位转为已开发，须说明开发计划的执行情况。"
+    text_c += f"已入账井位中计划在未来 12 个月内钻井的 {len(next12)} 个，计划投资 {W(capex_next)}。"
+    sec_c = dict(item="Item 1203(c)", title="转为已开发的投资与进展",
+                 text=text_c, citations=["Item 1203(c)"],
+                 facts=[dict(label="转化井位投资", value=_r(capex_conv, 1), unit="万元"),
+                        dict(label="转化率", value=pud["conversion_rate_pct"], unit="%"),
+                        dict(label="按目前节奏消化期末 PUD", value=pud["years_to_convert_at_pace"], unit="年"),
+                        dict(label="未来 12 个月计划钻井", value=len(next12), unit="个"),
+                        dict(label="未来 12 个月计划投资", value=_r(capex_next, 1), unit="万元")])
+    if long_undeveloped:
+        text_d = (f"期末已入账井位中，自首次入账起满五年仍未开发的有 {len(long_undeveloped)} 个："
+                  + "、".join(f"{l['location_id']}（{l['unit_id']}）" for l in long_undeveloped) + "，须逐个说明未开发的具体原因。")
+    else:
+        text_d = "期末已入账的 PUD 井位中，没有自首次入账起满五年仍未开发的井位（五年规则：须在首次入账后五年内钻井，超期即移出）。"
+    text_d += f"本期因超过五年未钻移出 {pud['n_expired']} 个井位（{T(-v['expired_5yr'])}）"
+    if near:
+        text_d += (f"；距五年期限不足一年的已入账井位 {len(near)} 个："
+                   + "、".join(f"{l['location_id']}（{l['unit_id']}，期限 {l['deadline_ym']}）" for l in near[:8])
+                   + ("等" if len(near) > 8 else "") + "，须确认钻井计划，否则下期移出。")
+    else:
+        text_d += "；没有距五年期限不足一年的已入账井位。"
+    sec_d = dict(item="Item 1203(d)", title="五年以上未开发的井位",
+                 text=text_d, citations=["Item 1203(d)", "Rule 4-10(a)(31)(ii)"],
+                 facts=[dict(label="满五年仍未开发", value=len(long_undeveloped), unit="个"),
+                        dict(label="本期超五年移出", value=pud["n_expired"], unit="个"),
+                        dict(label="距期限不足一年", value=len(near), unit="个")])
+    return dict(**_env(trace_id), scope=trk["scope"], from_as_of=fa, to_as_of=ta, scenario=scenario,
+                sections=[sec_a, sec_b, sec_c, sec_d],
+                converted=[dict(location_id=l["location_id"], unit_id=l["unit_id"], capex_wan=l["capex_wan"],
+                                reserves_t=l["reserves_t"]) for l in conv],
+                expired=[dict(location_id=l["location_id"], unit_id=l["unit_id"], first_booked_as_of=l["first_booked_as_of"])
+                         for l in expired],
+                near_deadline=[dict(location_id=l["location_id"], unit_id=l["unit_id"], deadline_ym=l["deadline_ym"],
+                                    planned_drill_ym=l["planned_drill_ym"], years_to_deadline=l["years_to_deadline"]) for l in near],
+                source=["unit_category_tracking", "unit_proved_categories"],
+                draft_note="披露草稿：数字取自评估内核，文字按 Regulation S-K Item 1203 组织；定稿须经持证评估人与信息披露部门审核。")
 
 
 # ---- 折耗与减值 ----

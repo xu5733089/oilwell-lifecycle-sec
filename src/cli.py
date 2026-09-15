@@ -219,11 +219,16 @@ def cmd_eval_algo(args) -> None:
 
 def cmd_eval_dca(args) -> None:
     from .eval.eval_dca import run
-    out = run()
-    print(f"类比井库 {out['n_library']} 口｜经济极限 {out['q_econ']} t/d")
-    print(f"{'峰后月数':>8s}  {'方法':22s}{'井数':>6s}{'12月产量误差':>12s}{'EUR误差':>9s}{'EUR偏差':>9s}{'高估>20%':>9s}")
+    if args.dataset == "ndic":
+        from .ingest import ndic_public
+        if not any(ndic_public.data_dir().glob("*.xlsx")):
+            print("下载 NDIC 公开月度报表到 data/raw/ndic（不入库）…", ndic_public.download())
+    out = run(dataset=args.dataset, max_wells=args.max_wells)
+    m = "EUR" if out["truth_available"] else "24月产量"
+    print(f"{out['dataset_label']}｜井 {out['n_wells_total']} 口（类比井库 {out['n_library']}、回测 {out['n_eval_wells']}）｜经济极限 {out['q_econ']} t/d")
+    print(f"{'峰后月数':>8s}  {'方法':22s}{'井数':>6s}{'12月产量误差':>12s}{m + '误差':>9s}{m + '偏差':>9s}{'高估>20%':>9s}")
     for r in out["table"]:
-        e = r.get("eur", {})
+        e = r.get("eur") or r.get("next24") or {}
         print(f"{r['horizon_months']:>8d}  {r['method_cn']:22s}{r['n_wells']:>6d}{r['next12'].get('mdape_pct', '—'):>11}%"
               f"{e.get('mdape_pct', '—'):>8}%{e.get('bias_pct', '—'):>8}%{e.get('over20_pct', '—'):>8}%")
     print("\n" + out["conclusion"])
@@ -306,6 +311,9 @@ def main(argv: Optional[list] = None) -> int:
     p.set_defaults(func=cmd_eval_algo)
 
     p = sub.add_parser("eval-dca", help="递减模型回测：经验 Arps vs 带物理约束的递减模型")
+    p.add_argument("--dataset", default="synthetic", choices=["synthetic", "linear_flow", "ndic"],
+                   help="synthetic 主合成数据；linear_flow 复合平板解析解队列；ndic 北达科他州公开数据（真实井）")
+    p.add_argument("--max-wells", type=int, default=800, help="ndic 数据集抽样井数上限")
     p.set_defaults(func=cmd_eval_dca)
 
     p = sub.add_parser("build-standards", help="由 eCFR 官方原文构建条款级准则库")

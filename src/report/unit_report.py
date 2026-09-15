@@ -109,9 +109,10 @@ def gather(scope: str, as_of: Optional[str] = None, scenario: str = "sec") -> Di
         jobs += [("reconcile", S.unit_reconcile, (scope,), dict(from_as_of=prev, to_as_of=as_of, scenario=scenario)),
                  ("attribution", S.unit_change_attribution, (scope,),
                   dict(from_as_of=prev, to_as_of=as_of, scenario=scenario)),
-                 ("tracking", S.unit_category_tracking, (scope,), dict(from_as_of=prev, to_as_of=as_of, scenario=scenario))]
+                 ("tracking", S.unit_category_tracking, (scope,), dict(from_as_of=prev, to_as_of=as_of, scenario=scenario)),
+                 ("pud_disclosure", S.unit_pud_disclosure, (scope,), dict(from_as_of=prev, to_as_of=as_of, scenario=scenario))]
     else:
-        data["reconcile"] = data["attribution"] = data["tracking"] = no_prev
+        data["reconcile"] = data["attribution"] = data["tracking"] = data["pud_disclosure"] = no_prev
     for key, fn, args, kw in jobs:
         try:
             data[key] = fn(*args, **kw)
@@ -558,6 +559,12 @@ def build_blocks(data: Dict, report_trace_id: str) -> List[Block]:
             figure("pud_roll", "PUD 滚动", lambda p: _fig_roll(p, tp["table"]))
             B.append(_table(["行项", "储量变动"], [[r["item"], t(r["value"]) if r["key"] in ("opening", "closing") else st(r["value"])]
                                                for r in tp["table"]], [False, True]))
+        dsc = None if err("pud_disclosure") else data["pud_disclosure"]
+        if dsc:
+            B.append(("h2", "（附）Item 1203 已证实未开发储量披露草稿"))
+            for sec in dsc["sections"]:
+                B.append(("p", f"{sec['item']} {sec['title']}：{sec['text']}（依据：{'；'.join(sec['citations'])}）"))
+            B.append(("note", dsc["draft_note"]))
         pdn = cat["pdnp"]
         B.append(("h2", "（二）PDNP 停产井"))
         B.append(("p", f"规则：{pdn['rule']}。停产井判定：" + "，".join(
